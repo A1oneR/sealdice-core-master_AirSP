@@ -1,0 +1,1244 @@
+package dice
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	json "github.com/bytedance/sonic"
+
+	"sealdice-core/dice/docengine"
+	"sealdice-core/logger"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/cespare/xxhash/v2"
+	nanoid "github.com/matoous/go-nanoid/v2"
+
+	"github.com/xuri/excelize/v2"
+)
+
+const HelpBuiltinGroup = "builtin"
+
+const (
+	Unload int = iota
+	Loaded
+	LoadError
+)
+
+type HelpDoc struct {
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Group      string `json:"group"`
+	Type       string `json:"type"`
+	IsDir      bool   `json:"isDir"`
+	LoadStatus int    `json:"loadStatus"`
+	Deleted    bool   `json:"deleted"`
+
+	Children []*HelpDoc `json:"children"`
+}
+
+type HelpTextItems []*docengine.HelpTextItem
+
+func (e HelpTextItems) String(i int) string {
+	return e[i].Title
+}
+
+func (e HelpTextItems) Len() int {
+	return len(e)
+}
+
+type HelpManager struct {
+	CurID        uint64
+	EngineType   EngineType
+	LoadingFn    string
+	HelpDocTree  []*HelpDoc
+	GroupAliases map[string]string
+	// SearchEngine
+	searchEngine docengine.SearchEngine
+
+	Config *HelpConfig
+
+	docIDs []string
+}
+
+type EngineType int
+
+const (
+	BlugeSearch EngineType = iota // 0
+	Clover                        // 1
+	MeiliSearch                   // 2
+)
+
+const HelpConfigFilename = "help_config.yaml"
+
+const helpContentParserVersion = 1
+
+type HelpConfig struct {
+	Aliases map[string][]string `json:"aliases" yaml:"aliases"`
+}
+
+type HelpDocFormat struct {
+	Mod     string            `json:"mod"`
+	Author  string            `json:"author"`
+	Brief   string            `json:"brief"`
+	Comment string            `json:"comment"`
+	Helpdoc map[string]string `json:"helpdoc"`
+}
+
+const (
+	helpIndexMetaPath  = docengine.DefaultCacheDir + "/help_index_meta.json"
+	legacyHelpCacheDir = "./data/_help_cache"
+)
+
+type HelpFileMeta struct {
+	Hash  uint64 `json:"hash"`
+	Size  int64  `json:"size"`
+	Group string `json:"group"`
+}
+
+type HelpIndexMeta struct {
+	ContentParserVersion int                     `json:"contentParserVersion"`
+	Files                map[string]HelpFileMeta `json:"files"`
+}
+
+func newEmptyHelpIndexMeta() *HelpIndexMeta {
+	return &HelpIndexMeta{
+		ContentParserVersion: helpContentParserVersion,
+		Files:                make(map[string]HelpFileMeta),
+	}
+}
+
+func reconcileHelpIndexMeta(indexMeta *HelpIndexMeta, metaTrusted, indexFreshlyCreated bool) (*HelpIndexMeta, bool) {
+	if !metaTrusted || indexFreshlyCreated || indexMeta == nil {
+		return newEmptyHelpIndexMeta(), false
+	}
+	if indexMeta.Files == nil {
+		indexMeta.Files = make(map[string]HelpFileMeta)
+	}
+	return indexMeta, true
+}
+
+func (m *HelpManager) loadSearchEngine() bool {
+	switch m.EngineType {
+	case Clover:
+		return false
+	case BlugeSearch:
+		engine, err := docengine.NewBlugeSearchEngine()
+		if err != nil {
+			logger.M().Errorf("初始化帮助文档失败，帮助文档不可用!")
+			return false
+		}
+		m.searchEngine = engine
+		return engine.IndexFreshlyCreated()
+	default:
+		// 如果全文搜索兼容性差，到时候全部回退到Clover查询
+		panic("unhandled default case")
+	}
+}
+
+func (m *HelpManager) Close() {
+	// 关闭Bucket，并删除所有数据
+	// TODO:暂时先不动删除逻辑
+	m.searchEngine.Close()
+}
+
+func (m *HelpManager) Load(dice *Dice, internalCmdMap CmdMapCls, extList []*ExtInfo) {
+	log := logger.M()
+	_ = os.RemoveAll("./data/_index") // 删除旧索引
+	_ = os.RemoveAll(legacyHelpCacheDir)
+
+	// 先读取索引 meta 和 docIDs 文件，判断缓存是否可信
+	indexMeta, metaTrusted := m.loadHelpIndexMeta()
+	if !metaTrusted {
+		log.Warnf("[帮助文档] 检测到索引缓存不可信(metaTrusted=%v)，删除旧索引 %s 并准备全量重建", metaTrusted, docengine.DefaultIndexDir)
+		_ = os.RemoveAll(docengine.DefaultIndexDir)
+	}
+
+	indexFreshlyCreated := m.loadSearchEngine()
+	if metaTrusted && indexFreshlyCreated {
+		log.Warnf("[帮助文档] 检测到 Bluge 索引已重新创建，将忽略旧 meta 并执行全量重建")
+	}
+	indexMeta, _ = reconcileHelpIndexMeta(indexMeta, metaTrusted, indexFreshlyCreated)
+
+	m.docIDs = make([]string, 0)
+
+	newMeta := newEmptyHelpIndexMeta()
+
+	if m.searchEngine != nil {
+		if err := m.searchEngine.DeleteByGroup(HelpBuiltinGroup); err != nil {
+			log.Warnf("[帮助文档] 删除内置帮助索引失败(group=%s): %v", HelpBuiltinGroup, err)
+		}
+	}
+
+	_ = m.AddItem(docengine.HelpTextItem{
+		Group: HelpBuiltinGroup,
+		Title: "骰点",
+		Content: `.help 骰点：
+ .r  //丢一个100面骰
+.r d10 //丢一个10面骰(数字可改)
+.r 3d6 //丢3个6面骰(数字可改)
+.ra 侦查 //侦查技能检定
+.ra 侦查+10 //技能临时加值检定
+.ra 3#p 射击 // 连续射击三次`,
+		PackageName: "帮助",
+	})
+
+	_ = m.AddItem(docengine.HelpTextItem{
+		Group: HelpBuiltinGroup,
+		Title: "扩展",
+		Content: `.help 扩展：
+扩展功能可以让你开关部分指令。
+例如你希望你的骰子是纯TRPG骰，那么可以通过.ext xxx off关闭一系列娱乐模块。
+或者目前正在进行dnd5e游戏，你可以通过如下指令开关dnd特化扩展。COC亦然。
+注意一点，不同扩展允许存在同名指令，例如dnd和coc都有st和rc，但他们本质上不是同一个指令，并不通用，还请注意。
+
+.ext coc7 on // 打开coc7版扩展
+.ext dnd5e off // 关闭dnd5版扩展
+
+.ext dnd5e on // 打开dnd5版扩展
+.ext coc7 off // 关闭coc7版扩展
+`,
+		PackageName: "帮助",
+	})
+
+	_ = m.AddItem(docengine.HelpTextItem{
+		Group: HelpBuiltinGroup,
+		Title: "跑团",
+		Content: `.help 跑团：
+.st 力量50 //载入技能/属性
+.coc // coc7版人物做成
+.dnd // dnd5版任务做成
+.pc new <角色名> // 创建角色并自动绑卡，无角色名则为当前
+.pc tag <角色名> // 当前群绑卡/解除绑卡(不填角色名)
+.pc save <角色名> // 保存角色[不绑卡时需要手动保存]，无角色名则为当前
+.pc load <角色名> // 加载角色[不绑卡]，无角色名则为当前
+.pc list //列出当前角色
+.pc del <角色名> //删除角色
+.setcoc 2 //设置为coc2版房规
+.nn 张三 //将自己的角色名设置为张三
+`,
+		PackageName: "帮助",
+	})
+
+	m.HelpDocTree = make([]*HelpDoc, 0)
+	entries, err := os.ReadDir("data/helpdoc")
+	if err != nil {
+		log.Errorf("unable to read helpdoc folder: %v", err)
+	}
+	start := time.Now() // 获取当前时间
+	totalEntries := len(entries)
+	for i, entry := range entries {
+		progress := float64(i+1) / float64(totalEntries) * 100
+		log.Infof("[帮助文档] 处理用户定义帮助文档组[文件夹]: 当前帮助文档加载进度: %s %.2f%% (%d/%d)", entry.Name(), progress, i+1, totalEntries)
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if filepath.Base(entry.Name()) == HelpConfigFilename {
+			m.loadHelpConfig()
+			continue
+		}
+		var child HelpDoc
+		child.Key = generateHelpDocKey()
+		child.Name = entry.Name()
+		child.Path = path.Join("data/helpdoc", entry.Name())
+		child.IsDir = entry.IsDir()
+		if child.IsDir {
+			child.Group = entry.Name()
+			child.Type = "dir"
+			child.Children = make([]*HelpDoc, 0)
+		} else {
+			child.Group = "default"
+			child.Type = filepath.Ext(child.Path)
+		}
+		buildHelpDocTree(&child, func(d *HelpDoc) {
+			if d.IsDir {
+				return
+			}
+			filePath := filepath.Clean(d.Path)
+			hash, size, hashErr := computeHelpFileHash(filePath)
+			if hashErr != nil {
+				d.LoadStatus = LoadError
+				return
+			}
+			newMeta.Files[filePath] = HelpFileMeta{
+				Hash:  hash,
+				Size:  size,
+				Group: d.Group,
+			}
+			oldMeta, okOld := indexMeta.Files[filePath]
+			if okOld && oldMeta.Hash == hash && oldMeta.Size == size && oldMeta.Group == d.Group {
+				d.LoadStatus = Loaded
+				return
+			}
+			if m.searchEngine != nil {
+				delErr := m.searchEngine.DeleteByFrom(filePath)
+				if delErr != nil {
+					log.Warnf("[帮助文档] 删除旧帮助索引失败(from=%s): %v", filePath, delErr)
+				}
+			}
+			ok := m.loadHelpDoc(d.Group, d.Path)
+			err = m.AddItemApply(false)
+			if ok && err == nil {
+				d.LoadStatus = Loaded
+			} else {
+				d.LoadStatus = LoadError
+			}
+		})
+		m.HelpDocTree = append(m.HelpDocTree, &child)
+	}
+	err = m.AddItemApply(false)
+	if err != nil {
+		log.Errorf("加载用户自定义帮助文档出现异常!: %v", err)
+	}
+
+	if dice != nil && dice.PackageManager != nil {
+		helpdocFiles := dice.PackageManager.GetEnabledContentFiles("helpdoc")
+		for _, child := range buildPackageHelpDocTree(helpdocFiles) {
+			_ = traverseHelpDocTree(child, func(d *HelpDoc) error {
+				if d.IsDir {
+					return nil
+				}
+				filePath := filepath.Clean(d.Path)
+				hash, size, hashErr := computeHelpFileHash(filePath)
+				if hashErr != nil {
+					d.LoadStatus = LoadError
+					return hashErr
+				}
+				newMeta.Files[filePath] = HelpFileMeta{
+					Hash:  hash,
+					Size:  size,
+					Group: d.Group,
+				}
+				oldMeta, okOld := indexMeta.Files[filePath]
+				if okOld && oldMeta.Hash == hash && oldMeta.Size == size && oldMeta.Group == d.Group {
+					d.LoadStatus = Loaded
+					return nil
+				}
+				if m.searchEngine != nil {
+					delErr := m.searchEngine.DeleteByFrom(filePath)
+					if delErr != nil {
+						log.Warnf("[帮助文档] 删除旧扩展包帮助索引失败(from=%s): %v", filePath, delErr)
+					}
+				}
+				ok := m.loadHelpDoc(d.Group, d.Path)
+				applyErr := m.AddItemApply(false)
+				if ok && applyErr == nil {
+					d.LoadStatus = Loaded
+				} else {
+					d.LoadStatus = LoadError
+				}
+				return nil
+			})
+			m.HelpDocTree = append(m.HelpDocTree, child)
+		}
+		if len(helpdocFiles) > 0 {
+			log.Infof("[帮助文档] 从扩展包加载帮助文档文件: %d", len(helpdocFiles))
+		}
+	}
+
+	if m.searchEngine != nil {
+		for oldPath := range indexMeta.Files {
+			if _, okNew := newMeta.Files[oldPath]; !okNew {
+				delErr := m.searchEngine.DeleteByFrom(oldPath)
+				if delErr != nil {
+					log.Warnf("[帮助文档] 删除已移除帮助文档索引失败(from=%s): %v", oldPath, delErr)
+				}
+			}
+		}
+	}
+
+	m.saveHelpIndexMeta(newMeta)
+	log.Infof("[帮助文档] 用户定义的帮助文档组已加载完成!")
+	log.Infof("[帮助文档] 正在处理指令相关（含插件）帮助文档组")
+	err = m.addInternalCmdHelp(internalCmdMap)
+	if err != nil {
+		log.Errorf("加载内置指令帮助文档出现异常: %v", err)
+	}
+	err = m.AddItemApply(false)
+	if err != nil {
+		log.Errorf("加载内置指令帮助文档出现异常: %v", err)
+	}
+	err = m.addExternalCmdHelp(extList)
+	if err != nil {
+		log.Errorf("加载插件指令帮助文档出现异常: %v", err)
+	}
+	err = m.AddItemApply(true)
+	if err != nil {
+		log.Errorf("加载插件指令帮助文档出现异常: %v", err)
+	}
+	log.Infof("[帮助文档] 指令相关（含插件）帮助文档组已加载完成!")
+	m.rebuildDocIDs()
+	elapsed := time.Since(start) // 计算执行时间
+	log.Infof("帮助文档加载完毕，共耗费时间: %s 共计加载条目:%d\n", elapsed, m.CurID)
+}
+
+func (m *HelpManager) loadHelpConfig() {
+	data, err := os.ReadFile(filepath.Join("./data/helpdoc", HelpConfigFilename))
+	if err != nil {
+		panic(err)
+	}
+	var config HelpConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		panic(err)
+	}
+	m.Config = &config
+	m.refreshHelpGroupAliases(config)
+}
+
+func (m *HelpManager) refreshHelpGroupAliases(config HelpConfig) {
+	// 先清空旧的别名
+	m.GroupAliases = make(map[string]string)
+	for group, aliases := range config.Aliases {
+		if len(aliases) > 0 {
+			for _, alias := range aliases {
+				m.GroupAliases[alias] = group
+			}
+		}
+	}
+}
+
+func (m *HelpManager) SaveHelpConfig(config *HelpConfig) error {
+	m.Config = config
+	m.refreshHelpGroupAliases(*config)
+
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(filepath.Join("./data/helpdoc", HelpConfigFilename), data, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *HelpManager) loadHelpDoc(group string, path string) bool {
+	log := logger.M()
+	fileExt := filepath.Ext(path)
+
+	switch fileExt {
+	case ".json":
+		m.LoadingFn = path
+		data := HelpDocFormat{}
+		pack, err := os.ReadFile(path)
+		if err == nil {
+			err = json.Unmarshal(pack, &data)
+			if err == nil {
+				for k, v := range data.Helpdoc {
+					_ = m.AddItem(docengine.HelpTextItem{
+						Group:       group,
+						From:        path,
+						Title:       k,
+						Content:     v,
+						PackageName: data.Mod,
+					})
+				}
+			}
+		}
+		return true
+	case ".xlsx":
+		// 梨骰帮助文件
+		m.LoadingFn = path
+		f, err := excelize.OpenFile(path)
+		if err != nil {
+			log.Error("HelpManager.loadHelpDoc", err)
+			break
+		}
+
+		for index, s := range f.GetSheetList() {
+			rows, err := f.GetRows(s)
+			if err == nil {
+				var synonymCount int
+				for i, row := range rows {
+					if i == 0 {
+						synonymCount, err = validateXlsxHeaders(row)
+						if err == nil {
+							// 跳过第一行
+							continue
+						} else {
+							log.Errorf("%s sheet %d(zero-based): %s\n", path, index, err)
+							break
+						}
+					}
+					if len(row) < 3 {
+						continue
+					}
+					var keyBuilder strings.Builder
+					keyBuilder.WriteString(row[0])
+					for j := range synonymCount {
+						if len(row[1+j]) > 0 {
+							keyBuilder.WriteString("/")
+							keyBuilder.WriteString(row[1+j])
+						}
+					}
+					key := keyBuilder.String()
+					content := unescapeXlsxHelpContent(row[synonymCount+1])
+
+					_ = m.AddItem(docengine.HelpTextItem{
+						Group:       group,
+						From:        path,
+						Title:       key,
+						Content:     content,
+						PackageName: s,
+					})
+				}
+			}
+		}
+
+		// Close the spreadsheet.
+		if err := f.Close(); err != nil {
+			log.Error("HelpManager.loadHelpDoc", err)
+		}
+		return true
+	}
+	return false
+}
+
+func unescapeXlsxHelpContent(content string) string {
+	if !strings.Contains(content, `\`) {
+		return content
+	}
+
+	var result strings.Builder
+	result.Grow(len(content))
+	for i := 0; i < len(content); i++ {
+		if content[i] != '\\' || i+1 >= len(content) {
+			result.WriteByte(content[i])
+			continue
+		}
+
+		switch content[i+1] {
+		case 'n':
+			result.WriteByte('\n')
+			i++
+		case '\\':
+			result.WriteByte('\\')
+			i++
+		default:
+			result.WriteByte(content[i])
+		}
+	}
+	return result.String()
+}
+
+// validateXlsxHeaders 验证 xlsx 格式 helpdoc 的表头是否是 Key Synonym（可能有多列） Content Description Catalogue Tag
+func validateXlsxHeaders(headers []string) (int, error) {
+	if len(headers) < 3 {
+		return 0, errors.New("helpdoc格式错误，缺少必须列 Key Synonym Content")
+	}
+
+	var (
+		index    int
+		expected string
+	)
+	var synonymCount int
+	expected = "key"
+out:
+	for index < len(headers) {
+		// 放宽同义词大小写校验
+		header := strings.ToLower(headers[index])
+		switch expected {
+		case "key":
+			if header != "key" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是Key，当前为%s", index+1, header)
+			}
+			expected = "synonym"
+			index++
+		case "synonym":
+			if header != "synonym" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是Synonym，当前为%s", index+1, header)
+			}
+			expected = "content"
+			index++
+			synonymCount++
+		case "content":
+			if header == "" || header == "synonym" {
+				// 有多列同义词
+				index++
+				synonymCount++
+				continue
+			} else if header != "content" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是为空白（表示同义词列）或者Content，当前为%s", index+1, header)
+			}
+			expected = "description"
+			index++
+		case "description":
+			if header != "description" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是Description，当前为%s", index+1, header)
+			}
+			expected = "catalogue"
+			index++
+		case "catalogue":
+			if header != "catalogue" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是Catalogue，当前为%s", index+1, header)
+			}
+			expected = "tag"
+			index++
+		case "tag":
+			if header != "tag" {
+				return 0, fmt.Errorf("helpdoc表头格式错误，第%d列表头必须是Tag", index+1)
+			}
+			break out
+		default:
+			return 0, fmt.Errorf("错误的表头校验状态，当前等待表头%s，实际获得%s", expected, header)
+		}
+	}
+	return synonymCount, nil
+}
+
+func (m *HelpManager) addCmdMap(packageName string, cmdMap CmdMapCls) error {
+	log := logger.M()
+	for k, v := range cmdMap {
+		content := v.Help
+		if content == "" {
+			content = v.ShortHelp
+		}
+		err := m.AddItem(docengine.HelpTextItem{
+			Group:       HelpBuiltinGroup,
+			Title:       k,
+			Content:     content,
+			PackageName: packageName,
+		})
+		if err != nil {
+			log.Errorf("AddCmdMapItem err:%v", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *HelpManager) addInternalCmdHelp(cmdMap CmdMapCls) error {
+	err := m.addCmdMap("核心指令", cmdMap)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *HelpManager) addExternalCmdHelp(ext []*ExtInfo) error {
+	for _, i := range ext {
+		err := m.AddItem(docengine.HelpTextItem{
+			Group:       HelpBuiltinGroup,
+			Title:       i.Name,
+			Content:     i.GetDescText(i),
+			PackageName: "扩展模块",
+		})
+		if err != nil {
+			return err
+		}
+		err = m.addCmdMap(i.Name, i.GetCmdMap())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *HelpManager) AddItem(item docengine.HelpTextItem) error {
+	_, err := m.searchEngine.AddItem(item)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *HelpManager) AddItemApply(end bool) error {
+	err := m.searchEngine.AddItemApply(end)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *HelpManager) IsAvailable() bool {
+	if m == nil || m.searchEngine == nil {
+		return false
+	}
+	if engine, ok := m.searchEngine.(*docengine.BlugeSearchEngine); ok {
+		return engine.Writer != nil
+	}
+	return true
+}
+
+func (m *HelpManager) GetNumericIDCount() int {
+	return len(m.docIDs)
+}
+
+func (m *HelpManager) GetItemByNumericID(id int) (*docengine.HelpTextItem, error) {
+	if id <= 0 || id > len(m.docIDs) {
+		return nil, errors.New("无效的帮助条目ID")
+	}
+	internalID := m.docIDs[id-1]
+	return m.searchEngine.GetItemByInternalID(internalID)
+}
+
+func (m *HelpManager) GetItemByNumericIDString(id string) (*docengine.HelpTextItem, error) {
+	if id == "" {
+		return nil, errors.New("无效的帮助条目ID")
+	}
+	v, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, err
+	}
+	return m.GetItemByNumericID(v)
+}
+
+func (m *HelpManager) getNumericIDByInternalID(internalID string) (int, bool) {
+	index := sort.SearchStrings(m.docIDs, internalID)
+	if index >= len(m.docIDs) || m.docIDs[index] != internalID {
+		return 0, false
+	}
+	return index + 1, true
+}
+
+func (m *HelpManager) Search(ctx *MsgContext, text string, titleOnly bool, pageSize, pageNum int, group string) (res *docengine.GeneralSearchResult, total, pageStart, pageEnd int, err error) {
+	return m.searchEngine.Search(ctx.Group.HelpPackages, text, titleOnly, pageSize, pageNum, group)
+}
+
+func (m *HelpManager) loadHelpIndexMeta() (*HelpIndexMeta, bool) {
+	data, err := os.ReadFile(helpIndexMetaPath)
+	if err != nil {
+		logger.M().Warnf("[帮助文档] 未找到索引 meta 文件(%s)，将视为缓存失效: %v", helpIndexMetaPath, err)
+		return newEmptyHelpIndexMeta(), false
+	}
+	var meta HelpIndexMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		logger.M().Warnf("[帮助文档] 解析索引 meta 文件(%s)失败，将视为缓存失效: %v", helpIndexMetaPath, err)
+		return newEmptyHelpIndexMeta(), false
+	}
+	if meta.Files == nil {
+		meta.Files = make(map[string]HelpFileMeta)
+	}
+	if meta.ContentParserVersion != helpContentParserVersion {
+		logger.M().Infof(
+			"[帮助文档] 内容解析版本已更新(%d -> %d)，将重新构建索引",
+			meta.ContentParserVersion,
+			helpContentParserVersion,
+		)
+		return newEmptyHelpIndexMeta(), false
+	}
+	return &meta, true
+}
+
+func (m *HelpManager) saveHelpIndexMeta(meta *HelpIndexMeta) {
+	if meta == nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(helpIndexMetaPath), 0755); err != nil {
+		logger.M().Warnf("[帮助文档] 创建索引 meta 目录失败(%s): %v", filepath.Dir(helpIndexMetaPath), err)
+		return
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		logger.M().Warnf("[帮助文档] 序列化索引 meta 失败: %v", err)
+		return
+	}
+	if err := os.WriteFile(helpIndexMetaPath, data, 0644); err != nil {
+		logger.M().Warnf("[帮助文档] 写入索引 meta 文件失败(%s): %v", helpIndexMetaPath, err)
+	}
+}
+
+func computeHelpFileHash(filePath string) (uint64, int64, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	h := xxhash.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return 0, 0, err
+	}
+	return h.Sum64(), n, nil
+}
+
+func (m *HelpManager) rebuildDocIDs() {
+	engine, ok := m.searchEngine.(*docengine.BlugeSearchEngine)
+	if !ok {
+		logger.M().Warnf("[帮助文档] 当前搜索引擎不是 BlugeSearchEngine，无法重建 docIDs 映射")
+		m.docIDs = make([]string, 0)
+		m.CurID = 0
+		return
+	}
+	ids, err := engine.ListAllDocumentIDs()
+	if err != nil {
+		logger.M().Warnf("[帮助文档] 列出全部文档 ID 失败，将清空 docIDs 映射: %v", err)
+		m.docIDs = make([]string, 0)
+		m.CurID = 0
+		return
+	}
+	m.docIDs = ids
+	m.CurID = uint64(len(ids))
+}
+
+func (m *HelpManager) GetSuffixText() string {
+	return m.searchEngine.GetSuffixText()
+}
+
+func (m *HelpManager) GetPrefixText() string {
+	return m.searchEngine.GetPrefixText()
+}
+
+func (m *HelpManager) GetShowBestRelativeGap() float64 {
+	return m.searchEngine.GetShowBestRelativeGap()
+}
+
+func (m *HelpManager) GetContent(item *docengine.HelpTextItem, depth int) string {
+	if depth > 7 {
+		return "{递归层数过多，不予显示}"
+	}
+	// 帮助文档中的 ./ 资源路径始终相对于该条目的来源文件。
+	txt := rewriteRelativeResourcePaths(item.From, item.Content)
+	re := regexp.MustCompile(`\{[^}\n]+\}`)
+	matched := re.FindAllStringSubmatchIndex(txt, -1)
+	if len(matched) == 0 {
+		return txt
+	}
+
+	result := strings.Builder{}
+	formattedIdx := 0
+	for _, i := range matched {
+		left := i[0]
+		right := i[1]
+
+		if left != 0 && txt[left-1] == '\\' {
+			result.WriteString(txt[formattedIdx : left-1])
+			if right > 1 && txt[right-2] == '\\' {
+				result.WriteString(txt[left : right-2])
+				result.WriteByte('}')
+			} else {
+				result.WriteString(txt[left:right])
+			}
+			formattedIdx = right
+			continue
+		}
+
+		result.WriteString(txt[formattedIdx:left])
+		formattedIdx = right
+		name := txt[left+1 : right-1]
+		// 搜索TitleOnly，严格匹配Title的情形
+		// 如果查询到对应数据，那么就调用m.GetContent
+		valueResult, err := m.searchEngine.GetHelpTextItemByTermTitle(name)
+		if err != nil {
+			result.WriteByte('{')
+			result.WriteString(name)
+			result.WriteString(" - 未能找到}")
+		} else {
+			result.WriteString(m.GetContent(valueResult, depth+1))
+		}
+	}
+	result.WriteString(txt[formattedIdx:])
+	return result.String()
+}
+
+func generateHelpDocKey() string {
+	key, _ := nanoid.Generate("0123456789abcdef", 16)
+	return key
+}
+
+// 修改 buildHelpDocTree 函数签名，添加进度参数
+func buildHelpDocTree(node *HelpDoc, fn func(d *HelpDoc)) {
+	// 收集所有节点
+	allNodes := []*HelpDoc{node}
+
+	for i := 0; i < len(allNodes); i++ {
+		current := allNodes[i]
+
+		p, err := os.Stat(current.Path)
+		if err != nil {
+			continue
+		}
+
+		if !p.IsDir() {
+			continue
+		}
+
+		subs, err := os.ReadDir(current.Path)
+		if err != nil {
+			continue
+		}
+
+		current.Children = make([]*HelpDoc, 0)
+
+		for _, sub := range subs {
+			if strings.HasPrefix(sub.Name(), ".") {
+				continue
+			}
+
+			var child HelpDoc
+			child.Key = generateHelpDocKey()
+			child.Name = sub.Name()
+			child.Path = path.Join(current.Path, sub.Name())
+			child.Group = current.Group
+			child.IsDir = sub.IsDir()
+
+			if sub.IsDir() {
+				child.Type = "dir"
+				child.Children = make([]*HelpDoc, 0)
+			} else {
+				child.Type = filepath.Ext(sub.Name())
+			}
+
+			allNodes = append(allNodes, &child)
+			current.Children = append(current.Children, &child)
+		}
+	}
+	for _, current := range allNodes {
+		// 调用处理函数
+		fn(current)
+	}
+}
+
+func buildPackageHelpDocTree(files []PackageContentFile) []*HelpDoc {
+	pkgRoot := func(file PackageContentFile) string {
+		rel := filepath.FromSlash(file.PackagePath)
+		if strings.HasSuffix(file.Path, rel) {
+			return strings.TrimSuffix(file.Path, rel)
+		}
+		return filepath.Dir(file.Path)
+	}
+
+	roots := make([]*HelpDoc, 0)
+	rootIndex := make(map[string]*HelpDoc)
+	for _, file := range files {
+		packagePath := filepath.ToSlash(file.PackagePath)
+		if !strings.HasPrefix(packagePath, "helpdoc/") {
+			continue
+		}
+		rel := strings.TrimPrefix(packagePath, "helpdoc/")
+		if rel == "" {
+			continue
+		}
+		segments := strings.Split(rel, "/")
+		if len(segments) == 1 {
+			roots = append(roots, &HelpDoc{
+				Key:        generateHelpDocKey(),
+				Name:       segments[0],
+				Path:       file.Path,
+				Group:      "default",
+				Type:       filepath.Ext(file.Path),
+				IsDir:      false,
+				LoadStatus: Unload,
+			})
+			continue
+		}
+
+		base := pkgRoot(file)
+		rootName := segments[0]
+		root := rootIndex[rootName]
+		if root == nil {
+			root = &HelpDoc{
+				Key:        generateHelpDocKey(),
+				Name:       rootName,
+				Path:       filepath.Join(base, filepath.FromSlash("helpdoc/"+rootName)),
+				Group:      rootName,
+				Type:       "dir",
+				IsDir:      true,
+				LoadStatus: Unload,
+				Children:   make([]*HelpDoc, 0),
+			}
+			rootIndex[rootName] = root
+			roots = append(roots, root)
+		}
+
+		current := root
+		for idx := 1; idx < len(segments); idx++ {
+			part := segments[idx]
+			isLast := idx == len(segments)-1
+			currentPath := filepath.Join(base, filepath.FromSlash("helpdoc/"+strings.Join(segments[:idx+1], "/")))
+			var child *HelpDoc
+			for _, existing := range current.Children {
+				if existing.Name == part {
+					child = existing
+					break
+				}
+			}
+			if child == nil {
+				child = &HelpDoc{
+					Key:        generateHelpDocKey(),
+					Name:       part,
+					Path:       currentPath,
+					Group:      root.Group,
+					IsDir:      !isLast,
+					LoadStatus: Unload,
+				}
+				if child.IsDir {
+					child.Type = "dir"
+					child.Children = make([]*HelpDoc, 0)
+				} else {
+					child.Type = filepath.Ext(child.Path)
+				}
+				current.Children = append(current.Children, child)
+			}
+			current = child
+		}
+	}
+
+	var sortNodes func(nodes []*HelpDoc)
+	sortNodes = func(nodes []*HelpDoc) {
+		sort.Slice(nodes, func(i, j int) bool {
+			if nodes[i].IsDir != nodes[j].IsDir {
+				return nodes[i].IsDir
+			}
+			return nodes[i].Name < nodes[j].Name
+		})
+		for _, node := range nodes {
+			if len(node.Children) > 0 {
+				sortNodes(node.Children)
+			}
+		}
+	}
+	sortNodes(roots)
+	return roots
+}
+
+func (m *HelpManager) UploadHelpDoc(src io.Reader, group string, name string) error {
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	group = strings.ReplaceAll(group, "/", "_")
+	group = strings.ReplaceAll(group, "\\", "_")
+	if group == "default" {
+		// 默认组直接上传到helpdoc文件夹中
+		group = ""
+	}
+
+	dirPath := filepath.Join("./data/helpdoc", group)
+	err := os.MkdirAll(dirPath, 0755)
+	if err != nil {
+		return err
+	}
+
+	filePath := filepath.Join(dirPath, name)
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer func(dst *os.File) {
+		_ = dst.Close()
+	}(dst)
+
+	if _, err = io.Copy(dst, src); err != nil {
+		return err
+	}
+
+	var groupExists bool
+	for _, groupDir := range m.HelpDocTree {
+		if groupDir.Name == group {
+			groupExists = true
+			groupDir.Deleted = false
+
+			var fileExists bool
+			for _, child := range groupDir.Children {
+				if child.Name == name && filepath.Clean(child.Path) == filepath.Clean(filePath) && !child.Deleted {
+					if child.LoadStatus == Unload {
+						child.Deleted = false
+						fileExists = true
+					} else {
+						child.Deleted = true
+					}
+				}
+			}
+			if !fileExists {
+				groupDir.Children = append(groupDir.Children, &HelpDoc{
+					Key:   generateHelpDocKey(),
+					Name:  name,
+					Path:  filePath,
+					Group: group,
+					Type:  filepath.Ext(filePath),
+				})
+			}
+			break
+		}
+	}
+	if !groupExists {
+		if group != "" {
+			newGroupDir := HelpDoc{
+				Key:      generateHelpDocKey(),
+				Name:     group,
+				Path:     dirPath,
+				Group:    group,
+				Type:     "dir",
+				IsDir:    true,
+				Children: make([]*HelpDoc, 0),
+			}
+			newGroupDir.Children = append(newGroupDir.Children, &HelpDoc{
+				Key:   generateHelpDocKey(),
+				Name:  name,
+				Path:  filePath,
+				Group: group,
+				Type:  filepath.Ext(filePath),
+			})
+			m.HelpDocTree = append(m.HelpDocTree, &newGroupDir)
+		} else {
+			m.HelpDocTree = append(m.HelpDocTree, &HelpDoc{
+				Key:   generateHelpDocKey(),
+				Name:  name,
+				Path:  filePath,
+				Group: "default",
+				Type:  filepath.Ext(filePath),
+			})
+		}
+	}
+
+	return nil
+}
+
+func (m *HelpManager) DeleteHelpDoc(keys []string) error {
+	keySet := make(map[string]bool)
+	for _, key := range keys {
+		keySet[key] = true
+	}
+
+	for _, node := range m.HelpDocTree {
+		err := traverseHelpDocTree(node, func(d *HelpDoc) error {
+			if !d.IsDir {
+				_, ok := keySet[d.Key]
+				if ok {
+					_, err := os.Stat(d.Path)
+					if !os.IsNotExist(err) {
+						err := os.Remove(d.Path)
+						if err != nil {
+							return err
+						}
+					}
+					d.Deleted = true
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		_, ok := keySet[node.Key]
+		if ok {
+			_, err := os.Stat(node.Path)
+			if !os.IsNotExist(err) {
+				err := os.RemoveAll(node.Path)
+				if err != nil {
+					return err
+				}
+			}
+			node.Deleted = true
+		}
+	}
+	return nil
+}
+
+func traverseHelpDocTree(root *HelpDoc, fn func(node *HelpDoc) error) error {
+	if root == nil {
+		return nil
+	}
+	err := fn(root)
+	if err != nil {
+		return err
+	}
+
+	if len(root.Children) == 0 {
+		return nil
+	}
+
+	for _, child := range root.Children {
+		err := traverseHelpDocTree(child, fn)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type HelpTextVo struct {
+	ID          int    `json:"id"`
+	Group       string `json:"group"`
+	From        string `json:"from"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	PackageName string `json:"packageName"`
+	KeyWords    string `json:"keyWords"`
+}
+
+type HelpTextVos []HelpTextVo
+
+func (h HelpTextVos) Len() int {
+	return len(h)
+}
+
+func (h HelpTextVos) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h HelpTextVos) Less(i, j int) bool {
+	return h[i].ID < h[j].ID
+}
+
+func (m *HelpManager) GetHelpItemPage(pageNum, pageSize int, id, group, from, title string) (int, HelpTextVos) {
+	if pageNum <= 0 || pageSize <= 0 {
+		return 0, HelpTextVos{}
+	}
+
+	// 如果ID不为空
+	if id != "" {
+		numericID, err := strconv.Atoi(id)
+		if err != nil {
+			return 0, HelpTextVos{}
+		}
+		// 加载对应数字 ID 的数据
+		item, err := m.GetItemByNumericID(numericID)
+		// 若成功
+		if err == nil {
+			// 返回这条数据
+			vo := HelpTextVo{
+				Group:       item.Group,
+				From:        item.From,
+				Title:       item.Title,
+				Content:     item.Content,
+				PackageName: item.PackageName,
+				KeyWords:    item.KeyWords,
+			}
+			vo.ID = numericID
+			return 1, HelpTextVos{vo}
+		}
+		return 0, HelpTextVos{}
+	}
+	// ID为空的情形，分页查询数据
+	total, result, err := m.searchEngine.PaginateDocuments(pageSize, pageNum, group, from, title)
+	if err != nil {
+		return 0, nil
+	}
+	var items = make(HelpTextVos, 0)
+	for _, item := range result {
+		numericID, ok := m.getNumericIDByInternalID(item.InternalID)
+		if !ok {
+			logger.M().Warnf("帮助文档内部 ID 不在数字 ID 映射中: %s", item.InternalID)
+			continue
+		}
+		vo := HelpTextVo{
+			ID:          numericID,
+			Group:       item.Group,
+			From:        item.From,
+			Title:       item.Title,
+			Content:     item.Content,
+			PackageName: item.PackageName,
+			KeyWords:    item.KeyWords,
+		}
+		items = append(items, vo)
+	}
+	return int(total), items
+}
+
+// SetDefaultHelpGroup 设置群默认搜索分组
+func (group *GroupInfo) SetDefaultHelpGroup(target string) {
+	group.DefaultHelpGroup = target
+}

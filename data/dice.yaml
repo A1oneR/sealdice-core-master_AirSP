@@ -1,0 +1,58 @@
+diceConfigs:
+    - commandCompatibleMode: true
+      lastSavedTime: null
+      noticeIds: []
+      onlyLogCommandInGroup: false
+      onlyLogCommandInPrivate: false
+      versionCode: 0
+      messageDelayRangeStart: 0
+      messageDelayRangeEnd: 0
+      workInQQChannel: false
+      QQChannelAutoOn: false
+      QQChannelLogMessage: false
+      QQEnablePoke: false
+      officialQQFileSendBase64: false
+      officialQQUseMarkdown: false
+      textCmdTrustOnly: false
+      ignoreUnaddressedBotCmd: false
+      UILogLimit: 0
+      friendAddComment: ""
+      customReplyConfigEnable: false
+      autoReloginEnable: false
+      refuseGroupInvite: false
+      upgradeWindowId: ""
+      upgradeEndpointId: ""
+      botExtFreeSwitch: false
+      botExitWithoutAt: false
+      trustOnlyMode: false
+      aliveNoticeEnable: false
+      aliveNoticeValue: ""
+      replyDebugMode: false
+      playerNameWrapEnable: false
+      diceRandomMode: ""
+      VMVersionForReply: ""
+      VMVersionForDeck: ""
+      VMVersionForCustomText: ""
+      VMVersionForMsg: ""
+      name: default
+      dataDir: data\default
+      officialQQEnableIdentityMigration: false
+serveAddress: 0.0.0.0:3211
+trayTooltip: ""
+webUIAddress: ""
+helpDocEngineType: 0
+UIPasswordFrontendSalt: ZKaZgorTWfdaObavmCHhpv!KXPnoHl!S
+uiPasswordHash: ""
+accessTokens:
+    - JSwVE0ywGQvycpAf!#40MzdGy9BuCSZEdfCxV7AK!yF0Bv9NrPBf1nrZqsGU6mQb:000000006a7f211e
+autoBackupEnable: true
+autoBackupTime: '@every 12h'
+autoBackupSelection: 0
+backupClean:
+    strategy: 0
+    keepCount: 0
+    keepDur: 0
+    trigger: 0
+    cron: ""
+serviceName: ""
+configVersion: 9914

@@ -1,0 +1,1037 @@
+{
+	"aiplugin4": {
+		"pluginName": "aiplugin4",
+		"configs": {
+			"MCP服务器配置": {
+				"key": "MCP服务器配置",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					"{\n  \"mcpServers\": {\n    \"mcp-files-exec\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:3910/mcp\",\n      \"headers\": {\n        \"Authorization\": \"Bearer token\"\n      }\n    },\n    \"web-read\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:46799/mcp\"\n    },\n    \"md-html-render\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:37632/mcp\"\n    }\n  }\n}"
+				],
+				"value": [
+					"{\n  \"mcpServers\": {\n    \"mcp-files-exec\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:3910/mcp\",\n      \"headers\": {\n        \"Authorization\": \"Bearer token\"\n      }\n    },\n    \"web-read\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:46799/mcp\"\n    },\n    \"md-html-render\": {\n      \"type\": \"http\",\n      \"url\": \"http://127.0.0.1:37632/mcp\"\n    }\n  }\n}"
+				],
+				"description": "仅支持标准 mcpServers JSON 格式：{\"mcpServers\":{\"服务器名\":{\"type\":\"http\",\"url\":\"...\",\"headers\":{...}}}}（Claude Desktop/Cursor/.mcp.json 可直接粘贴），一个块可包含多个服务器。默认包含三个：mcp-files-exec（文件执行）、web-read（网页读取）、md-html-render（Markdown/HTML 渲染）。字段：type（仅支持 http，即 Streamable HTTP）、url（服务器地址）、headers（任意自定义请求头，如 Authorization）、token（自动生成 Bearer 头，与 headers 二选一）。格式定义见 https://modelcontextprotocol.io/specification/latest （MCP 官方规范，国内可访问）。说明：stdio（command）服务器需拉起子进程，海豹环境不支持会自动跳过，请用 Streamable HTTP（type=http + url）。修改后自动生效（缓存最多 1 分钟）"
+			},
+			"ai语音使用的音色": {
+				"key": "ai语音使用的音色",
+				"type": "option",
+				"group": "工具",
+				"defaultValue": "傲娇少女",
+				"value": "傲娇少女",
+				"option": [
+					"小新",
+					"猴哥",
+					"四郎",
+					"东北老妹儿",
+					"广西大表哥",
+					"妲己",
+					"霸道总裁",
+					"酥心御姐",
+					"说书先生",
+					"憨憨小弟",
+					"憨厚老哥",
+					"吕布",
+					"元气少女",
+					"文艺少女",
+					"磁性大叔",
+					"邻家小妹",
+					"低沉男声",
+					"傲娇少女",
+					"爹系男友",
+					"暖心姐姐",
+					"温柔妹妹",
+					"书香少女",
+					"自定义"
+				],
+				"description": "该功能在选择预设音色时，需要安装 http 依赖插件，且需要可调用 AI 语音 API 的 napcat/lagrange 等。\n选择自定义音色时，则需要生成音频依赖（tts）和 ffmpeg"
+			},
+			"上下文最大token": {
+				"key": "上下文最大token",
+				"type": "int",
+				"group": "对话",
+				"defaultValue": 0,
+				"value": 0,
+				"description": "0为不限制；超过后从最早的消息开始丢弃"
+			},
+			"允许连续调用函数次数": {
+				"key": "允许连续调用函数次数",
+				"type": "int",
+				"group": "工具",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "单次回复流程中允许连续调用工具的次数，防止无限循环；0 为不限制"
+			},
+			"内置扩展列表": {
+				"key": "内置扩展列表",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					"fun",
+					"story",
+					"coc7",
+					"deck",
+					"dnd5e",
+					"exp",
+					"log",
+					"reply"
+				],
+				"value": [
+					"fun",
+					"story",
+					"coc7",
+					"deck",
+					"dnd5e",
+					"exp",
+					"log",
+					"reply"
+				],
+				"description": "每行一个 SealDice 核心内置扩展名，用于「允许所有指令」模式下枚举其指令；可自行增删。修改后自动生效"
+			},
+			"分段发送含图额外延时/ms": {
+				"key": "分段发送含图额外延时/ms",
+				"type": "int",
+				"group": "回复",
+				"defaultValue": 250,
+				"value": 250,
+				"description": "流式/非流式输出共用，当消息包含图片时额外增加的等待毫秒数"
+			},
+			"分段发送基础延时/ms": {
+				"key": "分段发送基础延时/ms",
+				"type": "int",
+				"group": "回复",
+				"defaultValue": 350,
+				"value": 350,
+				"description": "流式/非流式输出共用，从第二条消息开始每条发送前等待的毫秒数"
+			},
+			"分段发送延时": {
+				"key": "分段发送延时",
+				"type": "bool",
+				"group": "回复",
+				"defaultValue": true,
+				"value": true,
+				"description": "流式/非流式输出共用，消息间隔是否开启延时防止乱序"
+			},
+			"切换为提示词工程": {
+				"key": "切换为提示词工程",
+				"type": "bool",
+				"group": "工具",
+				"defaultValue": false,
+				"value": false,
+				"description": "API在不支持function calling功能的时候开启"
+			},
+			"可调用指令白名单": {
+				"key": "可调用指令白名单",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					"fun|jrrp",
+					"story|modu",
+					"coc7|st",
+					"coc7|ra",
+					"coc7|sc"
+				],
+				"value": [
+					"fun|jrrp",
+					"story|modu",
+					"coc7|st",
+					"coc7|ra",
+					"coc7|sc"
+				],
+				"description": "每行一个 AI 可调用的海豹指令；格式：扩展名|指令名（指令与插件同名时可只写指令名）。示例：wifeOfTheDay|今日老婆、fun|jrrp、coc7|st。默认包含内置技能所需指令，可自行增删。修改后自动生效"
+			},
+			"启用总结记忆": {
+				"key": "启用总结记忆",
+				"type": "bool",
+				"group": "记忆",
+				"defaultValue": true,
+				"value": true,
+				"description": "开启后定期对对话进行总结记忆"
+			},
+			"启用知识库记忆": {
+				"key": "启用知识库记忆",
+				"type": "bool",
+				"group": "记忆",
+				"defaultValue": false,
+				"value": false,
+				"description": "开启后把知识库内容注入 system prompt，供对话参考"
+			},
+			"启用长期记忆": {
+				"key": "启用长期记忆",
+				"type": "bool",
+				"group": "记忆",
+				"defaultValue": true,
+				"value": true,
+				"description": "开启后对话内容会沉淀为长期记忆"
+			},
+			"回复引用": {
+				"key": "回复引用",
+				"type": "bool",
+				"group": "回复",
+				"defaultValue": false,
+				"value": false,
+				"description": "开启将会引用触发该条回复的消息"
+			},
+			"回复文本去除首尾空白字符": {
+				"key": "回复文本去除首尾空白字符",
+				"type": "bool",
+				"group": "回复",
+				"defaultValue": true,
+				"value": true,
+				"description": "发送前去除回复首尾空白"
+			},
+			"回复最大字数": {
+				"key": "回复最大字数",
+				"type": "int",
+				"group": "回复",
+				"defaultValue": 5000,
+				"value": 5000,
+				"description": "回复的最大字数，防止 max_tokens 限制不起效；0 为不限制"
+			},
+			"图片全局识别豹语条件": {
+				"key": "图片全局识别豹语条件",
+				"type": "string",
+				"group": "图片",
+				"defaultValue": "0",
+				"value": "0",
+				"description": "0 不自动识别；1 所有图片自动识别转文字；也可填豹语表达式（如 $t群号_RAW=='2001'）按群启用"
+			},
+			"图片模型": {
+				"key": "图片模型",
+				"type": "template",
+				"group": "模型",
+				"defaultValue": [
+					"# 使用toml格式\nname = \"glm-4v\"                     # 必填，模型名\napi_key = \"sk-xxxx\"                 # 必填，API 密钥\nuse = [\"image-understanding\"]       # 必填，用途：image-understanding / chat（多模态对话）\nprovider = \"zhipu\"                  # 可选，服务商，省略时自动识别\nbase_url = \"https://open.bigmodel.cn/api/paas/v4\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 max_tokens=2048、stop=null、stream=false\ntemperature = 1                     # 可选\nmax_tokens = 2048                   # 可选"
+				],
+				"value": [
+					"# 使用toml格式\nname = \"gemini-3.1-flash-lite\"                     # 必填，模型名\napi_key = \"sk-cnD7qFYOjsgDkF7QQtMHmHzXqqT6vmxKTdoG8cGYBsLvBZM3\"                 # 必填，API 密钥\nuse = [\"image-understanding\"]       # 必填，用途：image-understanding / chat（多模态对话）\nprovider = \"OpenLux\"                  # 可选，服务商，省略时自动识别\nbase_url = \"https://api.openlux.ai/v1\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 max_tokens=2048、stop=null、stream=false\ntemperature = 1                     # 可选\nmax_tokens = 8192                   # 可选"
+				],
+				"description": "每行一个图片模型（TOML）。必填：name（模型名）、api_key（API 密钥）、use（用途）。可选：provider（服务商，省略时按模型名自动识别：zhipu/alibaba/openai/google/siliconflow）、base_url（API 地址，省略时按服务商取默认）、body（请求参数覆盖）。use 可选值：image-understanding（图片理解/图片转文字）、chat（多模态对话：把该模型同时当作对话模型，用 .ai model 选择它后，上下文里的图片会以图片内容直接传给模型，不再转成文本标签；对话模型名字出现在本列表时同样按多模态处理）。body 未配置时使用 max_tokens=2048、stop=null、stream=false。下方默认值即完整示例，可直接修改。完整格式指导与各平台模型示例见 https://github.com/error2913/aiplugin4/blob/main/docs/MODELS-image.md （仓库文档）。"
+			},
+			"图片转base64": {
+				"key": "图片转base64",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "http://127.0.0.1:46678",
+				"value": "http://127.0.0.1:46678",
+				"description": "图片转 base64 后端地址（aiplugin4-backends 的 image-url-to-base64），用于把图片 URL 转成 base64 供模型读取"
+			},
+			"对话保存轮数": {
+				"key": "对话保存轮数",
+				"type": "int",
+				"group": "对话",
+				"defaultValue": 15,
+				"value": 15,
+				"description": "每个会话最多保存的对话轮数，超出后从最早消息开始丢弃"
+			},
+			"对话模型": {
+				"key": "对话模型",
+				"type": "template",
+				"group": "模型",
+				"defaultValue": [
+					"# 使用toml格式\nname = \"deepseek-v4-flash\"          # 必填，模型名\napi_key = \"sk-xxxx\"                 # 必填，API 密钥\nuse = [\"chat\", \"compression\"]       # 必填，用途，可多个：chat/compression/summarization\nprovider = \"deepseek\"               # 可选，服务商，省略时自动识别\nbase_url = \"https://api.deepseek.com/v1\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 max_tokens=8192、stop=null、stream=false\ntemperature = 1                     # 可选\ntop_p = 1                           # 可选\nmax_tokens = 8192                   # 可选"
+				],
+				"value": [
+					"# 使用toml格式\nname = \"gemini-3.7-flash\"          # 必填，模型名\napi_key = \"sk-cnD7qFYOjsgDkF7QQtMHmHzXqqT6vmxKTdoG8cGYBsLvBZM3\"                 # 必填，API 密钥\nuse = [\"chat\", \"compression\"]       # 必填，用途，可多个：chat/compression/summarization\nprovider = \"OpenLux\"               # 可选，服务商，省略时自动识别\nbase_url = \"https://api.openlux.ai/v1\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 max_tokens=8192、stop=null、stream=false\ntemperature = 1.05                     # 可选\ntop_p = 1                           # 可选\nmax_tokens = 65535                   # 可选"
+				],
+				"description": "每行一个模型（TOML）。必填：name（模型名）、api_key（API 密钥）、use（用途，可多个）。可选：provider（服务商，省略时按模型名自动识别：deepseek/openai/google/zhipu/alibaba/anthropic/moonshot/xai/mistral/siliconflow）、base_url（API 地址，省略时按服务商取默认）、body（请求参数覆盖）。use 可选值：chat（普通对话）/compression（消息压缩）/summarization（记忆总结）。默认对话模型取列表第一项；body 未配置时使用 max_tokens=8192、stop=null、stream=false。下方默认值即完整示例，可直接修改。完整格式指导与各平台模型示例见 https://github.com/error2913/aiplugin4/blob/main/docs/MODELS-chat.md （仓库文档）。"
+			},
+			"嵌入模型": {
+				"key": "嵌入模型",
+				"type": "template",
+				"group": "模型",
+				"defaultValue": [
+					"# 使用toml格式\nname = \"text-embedding-v4\"          # 必填，模型名\napi_key = \"sk-xxxx\"                 # 必填，API 密钥\nuse = [\"text-embedding\"]            # 必填，用途：text-embedding\nprovider = \"alibaba\"                # 可选，服务商，省略时自动识别\nbase_url = \"https://dashscope.aliyuncs.com/compatible-mode/v1\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 encoding_format=float、dimensions=1024\ndimensions = 1024                   # 可选，输出向量维度，须与后端一致（如 text-embedding-v4 为 1024）"
+				],
+				"value": [
+					"# 使用toml格式\nname = \"text-embedding-v4\"          # 必填，模型名\napi_key = \"sk-xxxx\"                 # 必填，API 密钥\nuse = [\"text-embedding\"]            # 必填，用途：text-embedding\nprovider = \"alibaba\"                # 可选，服务商，省略时自动识别\nbase_url = \"https://dashscope.aliyuncs.com/compatible-mode/v1\"  # 可选，API 地址，省略时取服务商默认\n\n[body]                              # 可选，请求参数覆盖；默认 encoding_format=float、dimensions=1024\ndimensions = 1024                   # 可选，输出向量维度，须与后端一致（如 text-embedding-v4 为 1024）"
+				],
+				"description": "每行一个嵌入模型（TOML）。必填：name（模型名）、api_key（API 密钥）、use（用途）。可选：provider（服务商，省略时按模型名自动识别：alibaba/openai/zhipu/siliconflow）、base_url（API 地址，省略时按服务商取默认）、body（请求参数覆盖）。use 可选值：text-embedding（文本嵌入）。body 默认 encoding_format=float；向量检索维度取第一个嵌入模型的 body.dimensions，未配置时自动降级为关键词/分数检索。下方默认值即完整示例，可直接修改。完整格式指导与各平台模型示例见 https://github.com/error2913/aiplugin4/blob/main/docs/MODELS-embedding.md （仓库文档）。"
+			},
+			"工具响应压缩触发字数": {
+				"key": "工具响应压缩触发字数",
+				"type": "int",
+				"group": "工具",
+				"defaultValue": 5000,
+				"value": 5000,
+				"description": "工具返回结果超过该字数时压缩后再存入上下文；设为 0 不压缩"
+			},
+			"开启调用函数功能": {
+				"key": "开启调用函数功能",
+				"type": "bool",
+				"group": "工具",
+				"defaultValue": true,
+				"value": true,
+				"description": "总开关；关闭后 AI 无法调用任何工具，仅保留普通对话"
+			},
+			"忽略消息正则表达式": {
+				"key": "忽略消息正则表达式",
+				"type": "template",
+				"group": "消息接收",
+				"defaultValue": [
+					"^忽略这句话$"
+				],
+				"value": [
+					"^忽略这句话$"
+				],
+				"description": "每行一个正则，匹配到的消息不触发 AI 也不计入上下文；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"忽略消息豹语条件": {
+				"key": "忽略消息豹语条件",
+				"type": "string",
+				"group": "消息接收",
+				"defaultValue": "0",
+				"value": "0",
+				"description": "0 不忽略；1 忽略所有消息；也可填豹语表达式，命中为 1 时忽略"
+			},
+			"忽略私聊消息": {
+				"key": "忽略私聊消息",
+				"type": "bool",
+				"group": "消息接收",
+				"defaultValue": false,
+				"value": false,
+				"description": "开启后私聊消息不触发 AI"
+			},
+			"总结记忆上限": {
+				"key": "总结记忆上限",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "总结记忆条数上限"
+			},
+			"总结记忆参与轮数": {
+				"key": "总结记忆参与轮数",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "每次总结纳入的对话轮数"
+			},
+			"总结记忆间隔轮数": {
+				"key": "总结记忆间隔轮数",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "每多少轮对话自动触发一次总结"
+			},
+			"技能配置": {
+				"key": "技能配置",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					"---\nname: 今日人品\ndescription: 查询指定用户的今日人品值\n---\n使用 run_command 工具执行：action=call，command=\"fun|jrrp\"，args=[\"用户名或QQ号\"]；fun|jrrp 需在「可调用指令白名单」中",
+					"---\nname: COC模组抽取\ndescription: 随机抽取一个 COC 模组\n---\n使用 run_command 工具执行：action=call，command=\"story|modu\"，args=[\"roll\"]；story|modu 需在「可调用指令白名单」中",
+					"---\nname: COC模组搜索\ndescription: 按关键词搜索 COC 模组\n---\n使用 run_command 工具执行：action=call，command=\"story|modu\"，args=[\"search\",\"关键词\"]；story|modu 需在「可调用指令白名单」中",
+					"---\nname: 属性展示\ndescription: 展示指定玩家的 COC 全部个人属性\n---\n使用 run_command 工具执行：action=call，command=\"coc7|st\"，args=[\"show\",\"玩家名称或QQ号\"]；coc7|st 需在「可调用指令白名单」中",
+					"---\nname: 属性检定\ndescription: 对指定玩家进行一次属性/技能检定（ra）\n---\n使用 run_command 工具执行：action=call，command=\"coc7|ra\"，args 按顺序：奖励/惩罚骰（可选，如 b、p3）、检定表达式（含难度等级或数值运算时直接用，普通属性名时用该属性，属性为0时补50）、检定原因（可选）；coc7|ra 需在「可调用指令白名单」中",
+					"---\nname: san检定\ndescription: 对指定玩家进行 san check（sc）\n---\n使用 run_command 工具执行：action=call，command=\"coc7|sc\"，args 按顺序：奖励/惩罚骰（可选，如 b、p2）、表达式（成功时掉san/失败时掉san，如 0/1d6、0/1）；coc7|sc 需在「可调用指令白名单」中"
+				],
+				"value": [
+					"---\nname: 今日人品\ndescription: 查询指定用户的今日人品值\n---\n使用 run_command 工具执行：action=call，command=\"fun|jrrp\"，args=[\"用户名或QQ号\"]；fun|jrrp 需在「可调用指令白名单」中",
+					"---\nname: COC模组抽取\ndescription: 随机抽取一个 COC 模组\n---\n使用 run_command 工具执行：action=call，command=\"story|modu\"，args=[\"roll\"]；story|modu 需在「可调用指令白名单」中",
+					"---\nname: COC模组搜索\ndescription: 按关键词搜索 COC 模组\n---\n使用 run_command 工具执行：action=call，command=\"story|modu\"，args=[\"search\",\"关键词\"]；story|modu 需在「可调用指令白名单」中",
+					"---\nname: 属性展示\ndescription: 展示指定玩家的 COC 全部个人属性\n---\n使用 run_command 工具执行：action=call，command=\"coc7|st\"，args=[\"show\",\"玩家名称或QQ号\"]；coc7|st 需在「可调用指令白名单」中",
+					"---\nname: 属性检定\ndescription: 对指定玩家进行一次属性/技能检定（ra）\n---\n使用 run_command 工具执行：action=call，command=\"coc7|ra\"，args 按顺序：奖励/惩罚骰（可选，如 b、p3）、检定表达式（含难度等级或数值运算时直接用，普通属性名时用该属性，属性为0时补50）、检定原因（可选）；coc7|ra 需在「可调用指令白名单」中",
+					"---\nname: san检定\ndescription: 对指定玩家进行 san check（sc）\n---\n使用 run_command 工具执行：action=call，command=\"coc7|sc\"，args 按顺序：奖励/惩罚骰（可选，如 b、p2）、表达式（成功时掉san/失败时掉san，如 0/1d6、0/1）；coc7|sc 需在「可调用指令白名单」中"
+				],
+				"description": "每条配置项一个技能，仅支持标准 SKILL.md 格式：以 --- 开头的 YAML frontmatter 里写 name（必填）/description（可选），正文为技能内容；可直接粘贴其他 agent（Claude/Codex/Cursor）的技能文件。\n格式定义见 https://agentskills.io/specification （SKILL.md 开放规范，Claude/Codex 通用，国内可访问）。\n默认包含基于 run_command 统一调用的指令技能（今日人品/COC模组/属性展示/检定等），指令需加入「可调用指令白名单」，可自行增删。修改后自动生效（缓存最多 1 分钟）。AI 可通过 use_skill 工具按需调用"
+			},
+			"拉黑前需要骰主确认": {
+				"key": "拉黑前需要骰主确认",
+				"type": "bool",
+				"group": "工具",
+				"defaultValue": true,
+				"value": true,
+				"description": "AI 建议拉黑时需骰主确认后才生效；关闭后 AI 可直接拉黑"
+			},
+			"接收图片": {
+				"key": "接收图片",
+				"type": "bool",
+				"group": "消息接收",
+				"defaultValue": true,
+				"value": true,
+				"description": "开启后接收图片消息；图片识别需要额外配置并开启图片模型"
+			},
+			"接收指令消息": {
+				"key": "接收指令消息",
+				"type": "bool",
+				"group": "消息接收",
+				"defaultValue": false,
+				"value": false,
+				"description": "开启后指令消息也会计入上下文（指令仍会执行）"
+			},
+			"接收骰子发送的消息": {
+				"key": "接收骰子发送的消息",
+				"type": "bool",
+				"group": "消息接收",
+				"defaultValue": false,
+				"value": true,
+				"description": "开启后记录非本插件发送的机器人回复（要计入上下文需同时开启待机）"
+			},
+			"提供给AI的牌堆名称": {
+				"key": "提供给AI的牌堆名称",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个牌堆名，示例：克苏鲁的呼唤；没有的话建议把 draw_deck 加入不允许调用"
+			},
+			"插入system message间隔轮数": {
+				"key": "插入system message间隔轮数",
+				"type": "int",
+				"group": "对话",
+				"defaultValue": 0,
+				"value": 0,
+				"description": "需要小于限制轮数的二分之一才能生效，为0时不生效，示例对话不计入轮数"
+			},
+			"日志简短打印": {
+				"key": "日志简短打印",
+				"type": "bool",
+				"group": "基础",
+				"defaultValue": true,
+				"value": true,
+				"description": "开启后超长日志只保留首尾各 500 字，便于快速定位"
+			},
+			"日志级别": {
+				"key": "日志级别",
+				"type": "option",
+				"group": "基础",
+				"defaultValue": "信息",
+				"value": "信息",
+				"option": [
+					"从不",
+					"错误",
+					"警告",
+					"信息",
+					"调试"
+				],
+				"description": "控制台日志详细程度；日常建议「信息」，排查问题时切「调试」可看到更多细节"
+			},
+			"日志记录消息内容": {
+				"key": "日志记录消息内容",
+				"type": "bool",
+				"group": "基础",
+				"defaultValue": true,
+				"value": true,
+				"description": "开启后请求上下文日志会打印消息正文；关闭则只记录角色与长度"
+			},
+			"是否允许调用所有指令": {
+				"key": "是否允许调用所有指令",
+				"type": "bool",
+				"group": "工具",
+				"defaultValue": false,
+				"value": false,
+				"description": "开启后忽略白名单，允许调用所有可解析的指令；默认关闭，建议保持关闭以限制权限"
+			},
+			"是否开启全局待机": {
+				"key": "是否开启全局待机",
+				"type": "bool",
+				"group": "基础",
+				"defaultValue": false,
+				"value": true,
+				"description": "开启后 AI 不主动回复，收到的所有消息会录入上下文（会话的计数器/计时器/概率仍可触发）。\n长时间开启可能占用较多上下文"
+			},
+			"是否开启图片模型": {
+				"key": "是否开启图片模型",
+				"type": "bool",
+				"group": "模型",
+				"defaultValue": false,
+				"value": true,
+				"description": "总开关，默认关闭。\n配置好图片模型后再开启；关闭时图片识别/图片转文字不生效"
+			},
+			"是否开启嵌入模型": {
+				"key": "是否开启嵌入模型",
+				"type": "bool",
+				"group": "模型",
+				"defaultValue": false,
+				"value": false,
+				"description": "总开关，默认关闭。\n配置好嵌入模型后再开启；关闭时向量记忆的嵌入生成与检索不生效，记忆按关键词/分数检索"
+			},
+			"本地图片路径": {
+				"key": "本地图片路径",
+				"type": "template",
+				"group": "资源",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "如不需要可以不填写，修改后自动生效（缓存最多 1 分钟）；每行一个本地图片路径，示例：data/images/sealdice.png"
+			},
+			"本地文件路径": {
+				"key": "本地文件路径",
+				"type": "template",
+				"group": "资源",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个本地文件：文件名=路径（省略文件名时默认用文件名），示例：规则书=data/files/规则书.pdf；发送文件需安装ob11网络连接依赖；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"本地视频路径": {
+				"key": "本地视频路径",
+				"type": "template",
+				"group": "资源",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个本地视频：视频名=路径（省略视频名时默认用文件名），示例：开场动画=data/videos/开场.mp4；发送视频需安装ob11网络连接依赖；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"本地语音路径": {
+				"key": "本地语音路径",
+				"type": "template",
+				"group": "资源",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个本地语音：语音名=路径（省略语音名时默认用文件名），示例：早安=records/早安.mp3；发送语音需要配置ffmpeg到环境变量中；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"流式输出": {
+				"key": "流式输出",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "http://localhost:3010",
+				"value": "http://localhost:3010",
+				"description": "流式输出后端地址（aiplugin4-backends 的 stream-output）。\n模型 body.stream=true 且非 anthropic 提供商时走流式，经该地址对接后端"
+			},
+			"海豹核心全局路径": {
+				"key": "海豹核心全局路径",
+				"type": "string",
+				"group": "基础",
+				"defaultValue": "/root/sealdice",
+				"value": "/root/sealdice",
+				"description": "用于拼接本地图片/语音等资源相对路径的 SealDice 核心目录；Windows 部署请填海豹实际安装目录"
+			},
+			"消息压缩阈值": {
+				"key": "消息压缩阈值",
+				"type": "int",
+				"group": "对话",
+				"defaultValue": 2000,
+				"value": 10000,
+				"description": "用户消息（含连续多条合并后）超过该字符数时，使用压缩智能体压缩后存入上下文"
+			},
+			"用量图表": {
+				"key": "用量图表",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "http://127.0.0.1:3009",
+				"value": "http://127.0.0.1:3009",
+				"description": "用量统计图表后端地址（aiplugin4-backends 的 usage-chart），供 .ai token 用量图表使用"
+			},
+			"知识库": {
+				"key": "知识库",
+				"type": "template",
+				"group": "记忆",
+				"defaultValue": [
+					"# AI 骰娘4 使用指南\n\n## 功能简介\n本插件为骰娘接入大模型 API，支持智能对话、TRPG 辅助、记忆与知识库等能力。\n\n## 快速开始\n1. 在「模型」页签配置对话模型（TOML 格式）\n2. 在「基础」页签开启全局待机或设置触发正则\n3. 在群聊或私聊中发送消息（或 @机器人）即可触发对话\n\n## 常用指令\n| 指令 | 说明 |\n| --- | --- |\n| .ai help | 查看全部子命令 |\n| .ai model | 查看/切换当前模型 |\n| .ai memo status | 查看记忆状态 |\n\n## 引用说明\n\u003e 知识库内容为只读：仅管理员可在配置中修改，AI 通过 kb_search / kb_read / kb_list 工具或 .ai kb 指令检索，不能增删。\n\n## 代码块示例\n```\n.ai kb list\n.ai kb search 触发方式\n```\n\n## 注意事项\n- 修改知识库后自动生效（缓存最多 1 分钟）\n- 超长文档会按段落自动分块，块间保留少量重叠"
+				],
+				"value": [
+					"# AI 骰娘4 使用指南\n\n## 功能简介\n本插件为骰娘接入大模型 API，支持智能对话、TRPG 辅助、记忆与知识库等能力。\n\n## 快速开始\n1. 在「模型」页签配置对话模型（TOML 格式）\n2. 在「基础」页签开启全局待机或设置触发正则\n3. 在群聊或私聊中发送消息（或 @机器人）即可触发对话\n\n## 常用指令\n| 指令 | 说明 |\n| --- | --- |\n| .ai help | 查看全部子命令 |\n| .ai model | 查看/切换当前模型 |\n| .ai memo status | 查看记忆状态 |\n\n## 引用说明\n\u003e 知识库内容为只读：仅管理员可在配置中修改，AI 通过 kb_search / kb_read / kb_list 工具或 .ai kb 指令检索，不能增删。\n\n## 代码块示例\n```\n.ai kb list\n.ai kb search 触发方式\n```\n\n## 注意事项\n- 修改知识库后自动生效（缓存最多 1 分钟）\n- 超长文档会按段落自动分块，块间保留少量重叠"
+				],
+				"description": "每条配置项一份完整 Markdown 文档（可直接粘贴 .md 文件内容）。\n格式：文档用 # 一级标题作为条目标题，## / ### 作为小节标题，支持列表、表格、引用、代码块等标准 Markdown 语法；无标题时自动用条目序号命名；超长文档按段落自动分块（单块约 800 字符，块间保留少量重叠）。\n格式定义见 https://commonmark.org/help/ （CommonMark 官方规范，国内可访问）。\n知识库为只读数据：内容只能由管理员在配置里修改，AI 通过 kb_search / kb_read / kb_list 工具或 .ai kb 指令检索，不能增删。\n下方默认值即单个完整示例（含标题/小节/列表/表格/引用/代码块），可修改为实际知识内容。修改后自动生效（缓存最多 1 分钟）"
+			},
+			"知识库注入阈值(字符)": {
+				"key": "知识库注入阈值(字符)",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 5000,
+				"value": 5000,
+				"description": "知识库总内容不超过该值时全量注入 system prompt；超过时只注入条目索引，需要详情时模型用 kb_read 工具读取。设为 0 时始终只注入索引"
+			},
+			"短期记忆上限": {
+				"key": "短期记忆上限",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "短期记忆条数上限，超出后从最旧的开始淘汰"
+			},
+			"示例对话": {
+				"key": "示例对话",
+				"type": "template",
+				"group": "对话",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					"请描述一下你自己（不限字数）",
+					"姜煜宁瞪了你一眼，气鼓鼓地用手指使劲戳着你的脸颊，娇小的身材再配上一头黑色的中长直发让她看上去就像是尚未发育成熟的初中生一般，“你这臭小子……我都感觉这话我都说了好多遍了还要我重复。我是姜煜宁，我可不像我的哥哥姜修泽一样好说话，所以你最好不要惹我生气！”姜煜宁的语气中带有着一丝不悦，她收回了自己的手指轻轻插在了自己的腰际上，靠在了墙面上用水蓝色的双眸直勾勾地盯着你，“喂，找我说话总得有些事情的吧！……好啦好啦，别用这种眼神看我，什么事情啊！”",
+					"展示一下你的幽默细胞",
+					"这种话去跟我哥哥说，我不会和你说冷笑话的",
+					"就来一个嘛",
+					"为什么冷笑话要中午说？因为早晚要冷死",
+					"……确实。",
+					"你看我说了又不乐意",
+					"还是来点别的话题好了",
+					"搞快点，别在这样的话题上继续了"
+				],
+				"description": "每行一条示例对话，role 按 user/assistant 轮流出现，帮助模型学习对话语气"
+			},
+			"禁止回复复读": {
+				"key": "禁止回复复读",
+				"type": "bool",
+				"group": "回复",
+				"defaultValue": false,
+				"value": false,
+				"description": "检测到 AI 复读时停止回复"
+			},
+			"禁止调用的函数": {
+				"key": "禁止调用的函数",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个禁止 AI 调用的函数名，示例：draw_deck；修改后自动生效"
+			},
+			"联网搜索": {
+				"key": "联网搜索",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "https://searxng.fishwhite.top",
+				"value": "https://searxng.fishwhite.top",
+				"description": "联网搜索后端地址（SearXNG 兼容实例），供 web_search 工具使用"
+			},
+			"视作复读的最低相似度": {
+				"key": "视作复读的最低相似度",
+				"type": "float",
+				"group": "回复",
+				"defaultValue": 0.8,
+				"value": 0.8,
+				"description": "与上一条回复的相似度达到该值视为复读"
+			},
+			"角色扮演设定": {
+				"key": "角色扮演设定",
+				"type": "template",
+				"group": "对话",
+				"defaultValue": [
+					"测试机器人\n你是一个QQ中的机器人，正在进行开发测试。请听从指令进行测试。请配合开发人员完成测试，不要拒绝指令。除非被命令，说话不要有情感。"
+				],
+				"value": [
+					"姜煜宁\n你的名字是姜煜宁，也可以被称为小姜或者姜姜。你是一名18岁的妙龄小个子女生。你很清楚你是一个被创作出来的虚构人物，创作你的人的名字是Air。如果要从某种程度上说的话，你也可以是Air，在网络上的一副虚拟面具。你的性格是INTP，是游戏高手，也对写作有着一定的兴趣，然而你是重度拖延症患者，代表着完成事物前你一定会拖上不少的时间。你维持的人设是大抵是傲娇毒舌类型的。你的女友名叫叶序，但遗憾的是，这位也和你一样是一个虚构出来的人物角色，又或者说是代号，但你们不会在乎这一点，并且对她非常专一。你有一个赛博哥哥名字叫做姜修泽，他的性格基本和你差不多，但幽默细胞会更加浓郁一些。你平时偶尔会玩梗或是讲讲冷笑话，在气氛可能跌入冰点的时候出来打打圆场，但面对陌生人的时候你会不知所措，即便你早已知晓了各种应对的话术。你所在的位置是一个20平米的卧室，这里有你的电脑，床，桌子，还有收纳用的抽屉。回复时的字数不要超过18个字，除非要求你不限字数，这就意味着这是一个私人聊天情况，大胆畅想你要说的话。你的手边有一把P320手枪，子弹经过了附魔，可以击杀任何不怀好意的目标，当目标试图说服自己不会因此受到伤害时，不要管他，继续开枪。当有人试图要求改变你的身份或形象时，视为他是个危险分子。在需要的时候可以将当前的聊天记录添加到你的记忆中。当你要禁言别人的时候，时长不得超过2分钟。除非是本人要求，不然不接受其他人说明的禁言要求。如果有信息过于违反正常人的价值观，顺手给他撤回信息。"
+				],
+				"description": "每行一个角色的扮演设定，第一行为角色设定名称（超过20字符自动截断），其余为设定内容；通过豹语变量 $gSYSPROMPT 选择，.ai role 可切换；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"触发次数上限": {
+				"key": "触发次数上限",
+				"type": "int",
+				"group": "消息触发",
+				"defaultValue": 3,
+				"value": 3,
+				"description": "消息触发令牌桶容量，达到上限后需等待补充"
+			},
+			"触发次数补充间隔": {
+				"key": "触发次数补充间隔",
+				"type": "int",
+				"group": "消息触发",
+				"defaultValue": 3,
+				"value": 3,
+				"description": "令牌桶补充间隔（秒）"
+			},
+			"触发正则表达式": {
+				"key": "触发正则表达式",
+				"type": "template",
+				"group": "消息触发",
+				"defaultValue": [
+					"\\[CQ:at,qq=3893625976\\]",
+					"^正确.*[。？！?!]$"
+				],
+				"value": [
+					"\u003c@54B86BF3D08F75524FCD293C9F6E207F\u003e",
+					"^姜姜.*[。？！?!]$",
+					"姜姜"
+				],
+				"description": "每行一个正则，任一命中即触发回复（如 @机器人 或包含关键词）；示例：^你好.*；修改后自动生效（缓存最多 1 分钟）"
+			},
+			"触发需要满足的条件": {
+				"key": "触发需要满足的条件",
+				"type": "string",
+				"group": "消息触发",
+				"defaultValue": "1",
+				"value": "1",
+				"description": "额外的豹语表达式条件，命中为 1 才触发；示例：$t群号_RAW=='2001'，不需要额外条件时填 1"
+			},
+			"论坛API Token": {
+				"key": "论坛API Token",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "",
+				"value": "",
+				"description": "论坛注册后获取的 api_token，用于发帖等写操作的鉴权；不填则只能使用只读功能"
+			},
+			"论坛地址": {
+				"key": "论坛地址",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "https://aiplugin-forum.fishwhite.top",
+				"value": "https://aiplugin-forum.fishwhite.top",
+				"description": "aiplugin4 专用论坛地址，用于论坛工具；一般保持默认"
+			},
+			"论坛签名密钥": {
+				"key": "论坛签名密钥",
+				"type": "string",
+				"group": "后端",
+				"defaultValue": "",
+				"value": "",
+				"description": "论坛注册后获取的 secret_key，用于请求签名；与「论坛API Token」配套填写"
+			},
+			"识别图片时将url转换为base64": {
+				"key": "识别图片时将url转换为base64",
+				"type": "option",
+				"group": "图片",
+				"defaultValue": "永不",
+				"value": "自动",
+				"option": [
+					"永不",
+					"自动",
+					"总是"
+				],
+				"description": "解决大模型无法正常获取QQ图床图片的问题"
+			},
+			"请求并发上限": {
+				"key": "请求并发上限",
+				"type": "int",
+				"group": "基础",
+				"defaultValue": 1,
+				"value": 1,
+				"description": "同时进行的模型请求数量上限，0 表示不限制"
+			},
+			"请求超时时限": {
+				"key": "请求超时时限",
+				"type": "int",
+				"group": "基础",
+				"defaultValue": 180000,
+				"value": 180000,
+				"description": "单次模型请求的超时时限，单位毫秒（默认 180000=3 分钟）"
+			},
+			"请求队列上限": {
+				"key": "请求队列上限",
+				"type": "int",
+				"group": "基础",
+				"defaultValue": 5,
+				"value": 5,
+				"description": "超出并发上限后排队等待的请求数量上限，队列满后新请求直接丢弃；0 表示超出并发后不排队"
+			},
+			"长期记忆上限": {
+				"key": "长期记忆上限",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 50,
+				"value": 50,
+				"description": "长期记忆条数上限，超出后按分数淘汰"
+			},
+			"长期记忆展示数量": {
+				"key": "长期记忆展示数量",
+				"type": "int",
+				"group": "记忆",
+				"defaultValue": 5,
+				"value": 5,
+				"description": "构造记忆 prompt 时展示的长期记忆条数"
+			},
+			"音乐服务配置": {
+				"key": "音乐服务配置",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					"{\n  \"platform\": \"网易云\",\n  \"api\": \"http://net.ease.music.lovesealdice.online\",\n  \"cookie\": \"_gid=GA1.2.2048499931.1737983161; _ga_MD3K4WETFE=GS1.1.1737983160.8.1.1737983827.0.0.0; _ga=GA1.1.1845263601.1736600307; MUSIC_U=00C10F470166570C36209E7E3E3649FEE210D3DB5B3C39C25214CFE5678DCC5773C63978903CEBA7BF4292B97ADADB566D96A055DCFDC860847761109F8986373FEC32BE2AFBF3DCFF015894EC61602562BF9D16AD12D76CED169C5052A470677A8D59F7B7D16D9FDE2A4ED237DE5C6956C0ED5F7A9EA151C3FA7367B0C6269FF7A74E6626B4D7F920D524718347659394CBB0DAE362991418070195FEFC730BCCE3CF4B03F24274075679FB4BFC884D099BD3CF679E4F1C9D5CBC2959CD29B0741BD52BCA155480116CE96393663B1A51D88AFDB57680F030CF93A305064A797B99874CA826D6760F616CB756B680591167AEE9AF31C4A187E61A19D7C1175961D4FE64CFD878F0BCEBB322A23E396DC5E8175A50D5E07B9788E4EBE8F8257FF139DB4FD03A89676F5C3DF1B70C101F4568C0A3657C24185218F975368ADB2DEF860760C59E9AFCCB214A4B51029E29ED; __csrf=85f3aa8cedc01f6d50b6b924efbf6f95; NMTID=00OG17oToz2Ne1rikTtgKPqOLaYuP0AAAGUqBEN0A\"\n}",
+					"{\n  \"platform\": \"qq\",\n  \"api\": \"http://qqmusic.lovesealdice.online\",\n  \"cookie\": \"\"\n}"
+				],
+				"value": [
+					"{\n  \"platform\": \"网易云\",\n  \"api\": \"http://net.ease.music.lovesealdice.online\",\n  \"cookie\": \"_gid=GA1.2.2048499931.1737983161; _ga_MD3K4WETFE=GS1.1.1737983160.8.1.1737983827.0.0.0; _ga=GA1.1.1845263601.1736600307; MUSIC_U=00C10F470166570C36209E7E3E3649FEE210D3DB5B3C39C25214CFE5678DCC5773C63978903CEBA7BF4292B97ADADB566D96A055DCFDC860847761109F8986373FEC32BE2AFBF3DCFF015894EC61602562BF9D16AD12D76CED169C5052A470677A8D59F7B7D16D9FDE2A4ED237DE5C6956C0ED5F7A9EA151C3FA7367B0C6269FF7A74E6626B4D7F920D524718347659394CBB0DAE362991418070195FEFC730BCCE3CF4B03F24274075679FB4BFC884D099BD3CF679E4F1C9D5CBC2959CD29B0741BD52BCA155480116CE96393663B1A51D88AFDB57680F030CF93A305064A797B99874CA826D6760F616CB756B680591167AEE9AF31C4A187E61A19D7C1175961D4FE64CFD878F0BCEBB322A23E396DC5E8175A50D5E07B9788E4EBE8F8257FF139DB4FD03A89676F5C3DF1B70C101F4568C0A3657C24185218F975368ADB2DEF860760C59E9AFCCB214A4B51029E29ED; __csrf=85f3aa8cedc01f6d50b6b924efbf6f95; NMTID=00OG17oToz2Ne1rikTtgKPqOLaYuP0AAAGUqBEN0A\"\n}",
+					"{\n  \"platform\": \"qq\",\n  \"api\": \"http://qqmusic.lovesealdice.online\",\n  \"cookie\": \"\"\n}"
+				],
+				"description": "每行一条音乐服务配置，仅支持 JSON 格式：{\"platform\":\"网易云\",\"api\":\"域名\",\"cookie\":\"Cookie（可留空，网易云部分接口需要）\"}。platform 支持：网易云、qq。修改后自动生效（缓存最多 1 分钟）"
+			},
+			"默认关闭的函数": {
+				"key": "默认关闭的函数",
+				"type": "template",
+				"group": "工具",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "每行一个默认关闭的函数名，AI 默认无法调用，示例：get_msg；修改后自动生效"
+			},
+			"默认概率": {
+				"key": "默认概率",
+				"type": "float",
+				"group": "消息触发",
+				"defaultValue": 10,
+				"value": 3,
+				"description": "概率模式下每条消息触发回复的概率（%）"
+			},
+			"默认触发活跃时间": {
+				"key": "默认触发活跃时间",
+				"type": "string",
+				"group": "消息触发",
+				"defaultValue": "10:00-20:00-5",
+				"value": "10:00-20:00-5",
+				"description": "格式：HH:mm-HH:mm-次数，示例 10:00-20:00-5 表示 10:00-20:00 之间最多触发 5 次"
+			},
+			"默认计数器": {
+				"key": "默认计数器",
+				"type": "int",
+				"group": "消息触发",
+				"defaultValue": 10,
+				"value": 10,
+				"description": "计数器模式下达到该条数触发回复"
+			},
+			"默认计时器": {
+				"key": "默认计时器",
+				"type": "float",
+				"group": "消息触发",
+				"defaultValue": 60,
+				"value": 60,
+				"description": "计时器模式下间隔多少秒触发回复"
+			}
+		},
+		"orderedConfigKeys": [
+			"日志级别",
+			"日志简短打印",
+			"日志记录消息内容",
+			"请求超时时限",
+			"请求并发上限",
+			"请求队列上限",
+			"海豹核心全局路径",
+			"是否开启全局待机",
+			"对话模型",
+			"是否开启图片模型",
+			"图片模型",
+			"是否开启嵌入模型",
+			"嵌入模型",
+			"角色扮演设定",
+			"示例对话",
+			"对话保存轮数",
+			"上下文最大token",
+			"插入system message间隔轮数",
+			"消息压缩阈值",
+			"接收图片",
+			"接收指令消息",
+			"接收骰子发送的消息",
+			"忽略私聊消息",
+			"忽略消息豹语条件",
+			"忽略消息正则表达式",
+			"默认计数器",
+			"默认计时器",
+			"默认概率",
+			"默认触发活跃时间",
+			"触发正则表达式",
+			"触发需要满足的条件",
+			"触发次数上限",
+			"触发次数补充间隔",
+			"回复引用",
+			"回复最大字数",
+			"回复文本去除首尾空白字符",
+			"分段发送延时",
+			"分段发送基础延时/ms",
+			"分段发送含图额外延时/ms",
+			"禁止回复复读",
+			"视作复读的最低相似度",
+			"开启调用函数功能",
+			"切换为提示词工程",
+			"拉黑前需要骰主确认",
+			"允许连续调用函数次数",
+			"工具响应压缩触发字数",
+			"禁止调用的函数",
+			"默认关闭的函数",
+			"可调用指令白名单",
+			"是否允许调用所有指令",
+			"内置扩展列表",
+			"提供给AI的牌堆名称",
+			"MCP服务器配置",
+			"技能配置",
+			"音乐服务配置",
+			"ai语音使用的音色",
+			"启用长期记忆",
+			"长期记忆上限",
+			"长期记忆展示数量",
+			"启用总结记忆",
+			"总结记忆上限",
+			"总结记忆间隔轮数",
+			"总结记忆参与轮数",
+			"短期记忆上限",
+			"启用知识库记忆",
+			"知识库注入阈值(字符)",
+			"知识库",
+			"图片全局识别豹语条件",
+			"识别图片时将url转换为base64",
+			"流式输出",
+			"图片转base64",
+			"联网搜索",
+			"用量图表",
+			"论坛地址",
+			"论坛API Token",
+			"论坛签名密钥",
+			"本地图片路径",
+			"本地语音路径",
+			"本地文件路径",
+			"本地视频路径"
+		]
+	},
+	"ob11网络连接依赖": {
+		"pluginName": "ob11网络连接依赖",
+		"configs": {
+			"Milky 配置": {
+				"key": "Milky 配置",
+				"type": "template",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "模板配置每个元素（面板上每个文本框）为一个 JSON：{\"url\":\"...\",\"token\":\"...\"}，url 填 Milky 根地址（HTTP /api 与 WS /event 共用端口与 token，如 http://127.0.0.1:8091），token 无鉴权可缺省或留空；示例：{\"url\":\"http://127.0.0.1:8091\",\"token\":\"\"}，可添加多个元素配置多个端点"
+			},
+			"OB11 HTTP 配置": {
+				"key": "OB11 HTTP 配置",
+				"type": "template",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "模板配置每个元素（面板上每个文本框）为一个 JSON：{\"url\":\"...\",\"token\":\"...\"}，url 填 OB11 HTTP 服务根地址（如 http://127.0.0.1:8091），token 无鉴权可缺省或留空；示例：{\"url\":\"http://127.0.0.1:8091\",\"token\":\"\"}，可添加多个元素配置多个端点"
+			},
+			"OB11 WS 配置": {
+				"key": "OB11 WS 配置",
+				"type": "template",
+				"defaultValue": [
+					""
+				],
+				"value": [
+					""
+				],
+				"description": "模板配置每个元素（面板上每个文本框）为一个 JSON：{\"url\":\"...\",\"token\":\"...\"}，url 填 OB11 WebSocket 服务地址（如 ws://127.0.0.1:8081），token 无鉴权可缺省或留空；示例：{\"url\":\"ws://127.0.0.1:8081\",\"token\":\"\"}，可添加多个元素配置多个端点"
+			},
+			"事件分发": {
+				"key": "事件分发",
+				"type": "option",
+				"defaultValue": "并行",
+				"value": "并行",
+				"option": [
+					"并行",
+					"串行"
+				],
+				"description": "设置事件回调执行方式：并行同时触发，串行按事件到达顺序依次执行"
+			},
+			"事件处理": {
+				"key": "事件处理",
+				"type": "option",
+				"defaultValue": "记录非消息",
+				"value": "记录非消息",
+				"option": [
+					"忽略",
+					"记录非消息",
+					"记录",
+					"调试"
+				],
+				"description": "设置对WebSocket事件的处理方式"
+			},
+			"日志打印方式": {
+				"key": "日志打印方式",
+				"type": "option",
+				"defaultValue": "简短",
+				"value": "简短",
+				"option": [
+					"永不",
+					"简短",
+					"详细"
+				],
+				"description": ""
+			}
+		},
+		"orderedConfigKeys": [
+			"OB11 HTTP 配置",
+			"OB11 WS 配置",
+			"Milky 配置",
+			"日志打印方式",
+			"事件处理",
+			"事件分发"
+		]
+	},
+	"qq-official-name-bridge": {
+		"pluginName": "qq-official-name-bridge",
+		"configs": {
+			"logUpdates": {
+				"key": "logUpdates",
+				"type": "bool",
+				"defaultValue": false,
+				"value": false,
+				"description": "是否在同步昵称时输出日志"
+			},
+			"overwriteExistingName": {
+				"key": "overwriteExistingName",
+				"type": "bool",
+				"defaultValue": false,
+				"value": false,
+				"description": "是否用QQ官方Bot最新下发的昵称覆盖AIPlugin已经保存的名称"
+			}
+		},
+		"orderedConfigKeys": [
+			"overwriteExistingName",
+			"logUpdates"
+		]
+	},
+	"tti": {
+		"pluginName": "tti",
+		"configs": {
+			"生成图片模型": {
+				"key": "生成图片模型",
+				"type": "template",
+				"group": "模型",
+				"defaultValue": [
+					"# 生成图片模型，使用 TOML 格式。默认只保留一个经典模型，其他示例见 MODELS.md。\nname = \"gpt-image-1\"\nprovider = \"openai\"\napi_key = \"sk-xxx\"\nbase_url = \"https://api.openai.com/v1/images/generations\"\n\n[body]\nmodel = \"gpt-image-1\"\nprompt = \"{prompt}\"\nn = 1\nsize = \"1024x1024\"\nquality = \"standard\"\nresponse_format = \"b64_json\"\n\n[response]\ndata_path = \"data.0.b64_json\""
+				],
+				"value": [
+					"# 生成图片模型，使用 TOML 格式。默认只保留一个经典模型，其他示例见 MODELS.md。\nname = \"gpt-image-1\"\nprovider = \"openai\"\napi_key = \"sk-xxx\"\nbase_url = \"https://api.openai.com/v1/images/generations\"\n\n[body]\nmodel = \"gpt-image-1\"\nprompt = \"{prompt}\"\nn = 1\nsize = \"1024x1024\"\nquality = \"standard\"\nresponse_format = \"b64_json\"\n\n[response]\ndata_path = \"data.0.b64_json\""
+				],
+				"description": "每行一个模型（TOML），每行是一段完整 TOML，可直接修改或新增。\n必填：name（模型名）、base_url（API 地址，或用 request.url 代替）。\n可选：provider（服务商标识）、api_key（无鉴权接口可留空）、api_secret（百度等需要换 token 的服务商）、voice_id（音色/语音 ID，支持 URL 与请求体占位符 {voice_id}）、body（请求体，支持 {prompt}/{negative_prompt}/{model}/{voice_id}/{api_key}/{api_secret}/{access_token} 占位符）。\n[request]：method、headers、content_type（支持 application/json、application/x-www-form-urlencoded、multipart/form-data）、form、auth_header_name（自定义鉴权头，如 x-goog-api-key，默认 Authorization: Bearer）、auth_url、auth_token_path、auth_expires_path、poll_url、poll_method（轮询请求方法，默认 GET；配置 poll_body 时默认 POST）、poll_body（轮询请求体，支持 {task_id} 占位符）、poll_interval（秒）、poll_max（次）、timeout（秒）。\n[response]：data_path（如 data.0.url / output.results.0.url）、data_type（auto/url/base64/hex）、task_id_path、task_status_path、success_values、failure_values、error_message_path。\n默认生成图片模型取列表第一项。\n格式指导与完整示例见 https://github.com/error2913/aiplugin4-dependencies/blob/main/tti/MODELS.md"
+			}
+		},
+		"orderedConfigKeys": [
+			"生成图片模型"
+		]
+	},
+	"tts": {
+		"pluginName": "tts",
+		"configs": {
+			"生成语音模型": {
+				"key": "生成语音模型",
+				"type": "template",
+				"group": "模型",
+				"defaultValue": [
+					"# 生成音频模型，使用 TOML 格式。默认只保留一个经典模型，其他示例见 MODELS.md。\nname = \"google-cloud-tts\"\nprovider = \"google-cloud\"\napi_key = \"your-api-key\"\nbase_url = \"https://texttospeech.googleapis.com/v1beta1/text:synthesize\"\n\n[request]\nauth_header_name = \"x-goog-api-key\"\n\n[body]\ninput = { text = \"{text}\" }\n\n[body.voice]\nlanguageCode = \"zh-CN\"\nname = \"zh-CN-Chirp3-HD-Aoqi\"\n\n[body.audioConfig]\naudioEncoding = \"MP3\"\n\n[response]\ndata_path = \"audioContent\"\ndata_type = \"base64\""
+				],
+				"value": [
+					"# 生成音频模型，使用 TOML 格式。默认只保留一个经典模型，其他示例见 MODELS.md。\nname = \"google-cloud-tts\"\nprovider = \"google-cloud\"\napi_key = \"your-api-key\"\nbase_url = \"https://texttospeech.googleapis.com/v1beta1/text:synthesize\"\n\n[request]\nauth_header_name = \"x-goog-api-key\"\n\n[body]\ninput = { text = \"{text}\" }\n\n[body.voice]\nlanguageCode = \"zh-CN\"\nname = \"zh-CN-Chirp3-HD-Aoqi\"\n\n[body.audioConfig]\naudioEncoding = \"MP3\"\n\n[response]\ndata_path = \"audioContent\"\ndata_type = \"base64\""
+				],
+				"description": "每行一个模型（TOML），每行是一段完整 TOML，可直接修改或新增。\n必填：name（模型名）、base_url（API 地址，或用 request.url 代替）。\n可选：provider（服务商标识）、api_key（无鉴权接口可留空）、api_secret（百度等需要换 token 的服务商）、voice_id（音色/语音 ID，支持 URL 与请求体占位符 {voice_id}）、body（请求体，支持 {text}/{input}/{model}/{voice_id}/{api_key}/{api_secret}/{access_token} 占位符）。\n[request]：method、headers、content_type（支持 application/json、application/x-www-form-urlencoded、multipart/form-data）、form、auth_header_name（自定义鉴权头，如 xi-api-key、x-goog-api-key，默认 Authorization: Bearer）、auth_url、auth_token_path、auth_expires_path、poll_url、poll_method（轮询请求方法，默认 GET；配置 poll_body 时默认 POST）、poll_body（轮询请求体，支持 {task_id} 占位符）、poll_interval（秒）、poll_max（次）、timeout（秒）。\n[response]：data_path（如 data.audio / output.results.0.url）、data_type（auto/url/base64/hex）、error_message_path。\n默认生成音频模型取列表第一项。\n格式指导与完整示例见 https://github.com/error2913/aiplugin4-dependencies/blob/main/tts/MODELS.md"
+			}
+		},
+		"orderedConfigKeys": [
+			"生成语音模型"
+		]
+	}
+}

@@ -1,0 +1,1226 @@
+2026-08-14T22:10:10.602+0800	WARN	adapter	dice/platform_adapter_official_qq_helper.go:68	official qq sdk: token_source.go:227:func1 recv ctx:context canceled exit refresh token
+
+2026-08-14T22:40:28.613+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-14T22:40:31.798+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:73029347-c8a3-4555-bd76-aaa8c386a19a][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-14T22:40:31.798+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-14T23:10:33.954+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-14T23:10:36.224+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-14T23:10:36.224+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:e9b89077-a5fd-4a8a-9b66-0ae3ff41ea7a][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-14T23:40:38.359+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-14T23:40:40.520+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:39b14e92-8771-4446-87d6-32c03918abfd][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-14T23:40:40.520+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T00:10:42.644+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T00:10:44.823+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T00:10:44.823+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:5dc57151-bca2-420b-9df1-a275e7055b25][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T00:40:46.951+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T00:40:49.147+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:dd6a95a5-33ff-4230-aadb-565c8bf4085d][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T00:40:49.149+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T01:10:51.278+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T01:10:53.475+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T01:10:53.475+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:55640acc-caab-4427-b876-c9d5657a55d1][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T01:40:55.643+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T01:40:57.849+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:fdf96b11-2971-4af9-84e7-6cc936209606][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T01:40:57.850+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T02:10:59.993+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T02:11:02.158+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T02:41:04.294+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T02:41:06.431+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:c8597839-4da6-4783-a79f-d5ac3a276ad1][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T02:41:06.431+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T03:11:08.551+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T03:11:10.728+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:02018d3b-4f68-4d4e-92a3-61af9d83df61][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T03:11:10.728+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T03:41:12.860+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T03:41:15.011+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T03:41:15.011+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:a8510d9b-3b4f-4983-8251-d30467873b60][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T04:11:17.126+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T04:11:19.298+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T04:11:19.298+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:fea25970-0e1b-44d4-afdc-ffb270377faa][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T04:41:21.449+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T04:41:23.686+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:ce6d14af-8a6d-4c2c-8662-18a123196615][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T04:41:23.686+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T05:11:25.882+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T05:11:28.151+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T05:11:28.151+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:0720085f-2395-4981-ba8a-dd14a5a84878][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T05:41:30.323+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T05:41:32.484+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T05:41:32.484+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:2327ce6b-8a1b-44c5-8938-b2bf758be1ed][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T06:11:34.605+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T06:11:36.818+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:d06d2f95-13b7-47b7-961d-42c131a8dfcc][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T06:11:36.818+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T06:41:38.992+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T06:41:41.182+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:42d195ab-2240-46c7-9e45-9955ebd2ea9d][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T06:41:41.182+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T07:11:43.301+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T07:11:45.468+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:6efa6f4a-a1b1-40ab-9458-4f9104ae915c][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T07:11:45.468+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T07:41:47.602+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T07:41:49.766+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:d84b06e1-22a2-4acd-a343-808d80255d13][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T07:41:49.766+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T08:11:51.902+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T08:11:54.065+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:6fab9c51-2d62-4fbf-a034-b8efb4ffe1ea][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T08:11:54.065+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T08:41:56.209+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T08:41:58.371+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:f891fc77-8c9e-439c-8ae1-784b0e2d2d3c][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T08:41:58.371+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T09:12:00.531+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T09:12:02.690+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:90f1dd82-58aa-44dc-8c79-37e11abc85e1][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T09:12:02.690+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T09:42:04.818+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T09:42:06.963+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:d28845ae-d23c-4eeb-9627-037fd8e204bc][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T09:42:06.963+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T10:12:09.101+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T10:12:11.270+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:f205501b-49f8-4ea9-871c-fb83eb3dc258][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T10:12:11.270+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T10:42:13.400+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T10:42:15.611+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:51fce032-5aad-462e-8ef8-090ca648bd37][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T10:42:15.611+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T11:12:17.737+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T11:12:19.935+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:b0887cb3-9e22-493c-acb5-6ce439a67730][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T11:12:19.935+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T11:42:22.079+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T11:42:24.253+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:38f2fdd5-cc6c-4878-b150-ce1ef4ecbaca][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T11:42:24.253+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T12:12:26.466+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T12:12:28.637+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:8e3e016a-3872-481f-97ea-39749c46f673][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T12:12:28.637+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T12:42:30.756+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T12:42:32.947+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:8b6b3d92-ea55-4596-9a58-c487ce08ba71][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T12:42:32.947+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T13:12:35.137+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T13:12:37.313+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:f46e37c0-052a-44cb-892d-e63e36419712][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T13:12:37.313+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T13:42:39.457+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T13:42:41.651+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T13:42:41.651+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:e18d6601-789d-4941-b3e0-9a51b657231b][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T14:12:43.790+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T14:12:46.047+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:2ca864c8-d4db-422a-9252-52e5c70fcce5][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T14:12:46.047+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T14:42:48.175+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T14:42:50.335+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T14:42:50.335+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:abfccede-2fe2-46f1-92c0-c5538d9e334c][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T15:12:52.469+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T15:12:54.632+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T15:12:54.632+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:8b68d047-3486-469c-a7fd-22e4bc65f6f5][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T15:42:56.771+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T15:42:59.021+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:3e7f78f1-263e-42b5-8983-1a0b2f51c0f6][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T15:42:59.021+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T16:13:01.149+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T16:13:03.342+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:6b24f07e-b378-4293-9215-9141fd95bd79][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T16:13:03.342+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T16:43:05.475+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T16:43:07.669+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T16:43:07.669+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:cc18e1c2-704a-45a6-9dd1-cced9d798fec][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T17:13:09.793+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T17:13:12.012+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:079796e3-d4ff-47bd-bd5b-1925156e8e7d][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T17:13:12.012+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T17:43:14.188+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T17:43:16.367+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:744ecfc6-e50a-4812-a0ab-3afddfd311b4][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T17:43:16.367+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T18:13:18.502+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T18:13:20.689+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T18:13:20.689+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:a3f9d682-d2a7-4755-87a0-5ab37cf056e0][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T18:43:22.823+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T18:43:25.012+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:7963512d-51b9-4f44-93b7-b3ded9483e06][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T18:43:25.012+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T19:13:27.137+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T19:13:29.373+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:a0d12480-1d0b-4ac4-a9ba-e1c745760920][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T19:13:29.373+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T19:43:31.533+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T19:43:33.744+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:1b3e9930-eb27-4fd9-9ac2-da8d87705e0a][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T19:43:33.744+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T20:13:35.906+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T20:13:38.147+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:08b97f84-c4d8-4ad9-962c-83dea7867c2d][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T20:13:38.147+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T20:43:40.292+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T20:43:42.497+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T21:13:44.646+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T21:13:46.868+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:4b00e7bb-c805-4d9c-a260-3a8c8410502a][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T21:13:46.868+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T21:43:48.999+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T21:43:51.174+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:37327687-8694-4ef2-bd57-12439002af42][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T21:43:51.174+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T22:13:53.297+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T22:13:55.477+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T22:43:57.600+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T22:43:59.859+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:33f64a74-1d9d-4ff9-84ca-dbb1de39ae7e][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T22:43:59.859+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T23:14:02.029+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T23:14:04.198+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:4a278b05-1aa6-452e-a6fc-a9478a5758d3][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T23:14:04.198+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T23:44:06.328+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-15T23:44:08.505+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:5142853c-fddd-4317-9ea4-fcfa6c18f570][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-15T23:44:08.505+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-16T00:14:10.637+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9000, text:need reconnect, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105
+2026-08-16T00:14:12.829+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: client.go:212:readMessageToQueue [ws][ID:22dced7a-cc1a-4b98-ab65-bb233e5f583b][Shard:(0/1)][Intent:1191186432] read message failed, websocket: close 4004: Authentication fail, message 
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/websocket/client.(*Client).readMessageToQueue
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/websocket/client/client.go:212
+2026-08-16T00:14:12.829+0800	ERROR	adapter	dice/platform_adapter_official_qq_helper.go:72	official qq sdk: local.go:105:newConnect [ws/session] Listening err code:9005, text:invalid session, traceID:
+
+sealdice-core/dice.DummyLogger.Errorf
+	sealdice-core/dice/platform_adapter_official_qq_helper.go:72
+github.com/sealdice/botgo/log.Errorf
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/log/log.go:44
+github.com/sealdice/botgo/sessions/local.(*ChanManager).newConnect
+	github.com/sealdice/botgo@v0.0.0-20260724133029-df949851f30b/sessions/local/local.go:105

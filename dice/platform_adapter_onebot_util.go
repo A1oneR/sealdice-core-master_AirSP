@@ -1,0 +1,1186 @@
+package dice
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	evsocket "github.com/PaienNate/pineutil/evsocket/v2"
+	"github.com/bytedance/sonic"
+	"github.com/panjf2000/ants/v2"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
+
+	"sealdice-core/dice/events"
+	"sealdice-core/dice/imsdk/onebot/schema"
+	"sealdice-core/message"
+)
+
+// ONEBOT事件对应码表
+// OnebotEventPostTypeCode
+const (
+	OnebotEventPostTypeMessage = "onebot_message"
+	// OnebotEventPostTypeCodeMessageSent 是bot发出的消息
+	OnebotEventPostTypeMessageSent = "onebot_message_sent"
+	OnebotEventPostTypeRequest     = "onebot_request"
+	OnebotEventPostTypeNotice      = "onebot_notice"
+	OnebotEventPostTypeMetaEvent   = "onebot_meta_event"
+)
+
+const (
+	OnebotReceiveMessage = "onebot_echo"
+)
+
+// serveOnebotEvent 消息分发函数。该函数将所有的传入参数，全部转换为array模式
+func (p *PlatformAdapterOnebot) serveOnebotEvent(ep *evsocket.EventPayload) {
+	p.logger.Debugf("Message event - User: %s - Message: %s", ep.Kws.GetStringAttribute("user_id"), string(ep.Data))
+	if !gjson.ValidBytes(ep.Data) {
+		return
+	}
+	// 注册Emitter
+	resp := gjson.ParseBytes(ep.Data)
+	if resp.Get("self_id").Int() != 0 {
+		p.once.Do(func() {
+			if p.sendEmitter != nil {
+				_ = p.sendEmitter.SetSelfId(p.ctx, resp.Get("self_id").Int())
+			}
+		})
+	}
+	// 解析是string还是array
+	// TODO: 不知道是不是通过这种方式判断是string或者array的
+	switch resp.Get("message").Type {
+	case gjson.String:
+		p.wsmode = "string"
+	case gjson.JSON:
+		p.wsmode = "array"
+	default:
+		p.wsmode = "string"
+	}
+	if p.wsmode == "string" {
+		resp2, err := string2array(resp)
+		if err != nil {
+			p.logger.Warnf("消息转换为array异常 %s 未能正确处理", resp.String())
+			return
+		}
+		resp = resp2
+	}
+	// 将数据转换为对应的事件event
+	eventType := resp.Get("post_type").String()
+	if eventType != "" {
+		// 分发事件
+		eventType = fmt.Sprintf("onebot_%s", eventType)
+		ep.Kws.Fire(eventType, []byte(resp.String()))
+	} else {
+		// 如果没有post_type，说明不是上报信息，而是API的返回信息
+		ep.Kws.Fire(OnebotReceiveMessage, []byte(resp.String()))
+	}
+}
+
+func (p *PlatformAdapterOnebot) onOnebotMessageEvent(ep *evsocket.EventPayload) {
+	// 收到普通消息的时候：执行ExecuteNew函数
+	msg, err := arrayByte2SealdiceMessage(p.logger, ep.Data)
+	if err != nil {
+		p.logger.Errorf("收到消息但无法进行处理，原因为 %s", err)
+		return
+	}
+	session := p.EndPoint.Session
+	// 注册消息发送人的缓存，以兼容dice_manager
+	if msg.Sender.UserID != "" && msg.Sender.Nickname != "" {
+		session.Parent.Parent.UserNameCache.Store(msg.Sender.UserID, &GroupNameCacheItem{Name: msg.Sender.Nickname, time: time.Now().Unix()})
+	}
+
+	session.ExecuteNew(p.EndPoint, msg)
+}
+
+func (p *PlatformAdapterOnebot) onOnebotRequestEvent(ep *evsocket.EventPayload) {
+	// 请求分为好友请求和加群/邀请请求
+	req := gjson.ParseBytes(ep.Data)
+	switch req.Get("request_type").String() {
+	case "friend":
+		_ = p.handleReqFriendAction(req, ep)
+	case "group":
+		_ = p.handleReqGroupAction(req, ep)
+	}
+}
+func (p *PlatformAdapterOnebot) OnebotNoticeEvent(ep *evsocket.EventPayload) {
+	// 进群致辞
+	req := gjson.ParseBytes(ep.Data)
+	switch req.Get("notice_type").String() {
+	// 入群（强行拉群等）
+	case "group_increase":
+		_ = p.handleJoinGroupAction(req, ep)
+	case "group_decrease":
+		_ = p.handleGroupDecreaseAction(req, ep)
+	case "friend_add":
+		_ = p.handleAddFriendAction(req, ep)
+	case "group_ban":
+		_ = p.handleGroupBanAction(req, ep)
+	case "group_recall":
+		_ = p.handleGroupRecallAction(req, ep)
+	case "group_upload":
+		_ = p.handleGroupUploadAction(req, ep)
+	case "notify":
+		switch req.Get("sub_type").String() {
+		case "poke":
+			// 戳一戳
+			_ = p.handleGroupPokeAction(req, ep)
+		}
+	}
+}
+
+func (p *PlatformAdapterOnebot) handleGroupUploadAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	fileData := req.Get("file")
+	fileID := fileData.Get("id").String()
+	if fileID == "" {
+		fileID = fileData.Get("file_id").String()
+	}
+	name := fileData.Get("name").String()
+	if name == "" {
+		name = fileData.Get("file").String()
+	}
+	busID := fileData.Get("busid").Int()
+	size := fileData.Get("size").Int()
+	url := fileData.Get("url").String()
+
+	if fileID == "" && name == "" && url == "" {
+		p.logger.Warnf("收到 group_upload 事件但缺少文件信息: %s", req.String())
+		return nil
+	}
+
+	ctx := p.makeCtx(req)
+	if ctx == nil || ctx.Group == nil {
+		return errors.New("group_upload: 无法构造群聊上下文")
+	}
+	nickname := ""
+	if ctx.Player != nil {
+		nickname = ctx.Player.Name
+	}
+	msg := &Message{
+		Time:        req.Get("time").Int(),
+		MessageType: "group",
+		GroupID:     canonicalOnebotGroupID(req.Get("group_id").String()),
+		Platform:    "QQ",
+		Sender: SenderBase{
+			UserID:   canonicalOnebotUserID(req.Get("user_id").String()),
+			Nickname: nickname,
+		},
+	}
+	params := []string{
+		"file=" + name,
+		"file_id=" + fileID,
+		fmt.Sprintf("busid=%d", busID),
+		fmt.Sprintf("file_size=%d", size),
+	}
+	if url != "" {
+		params = append(params, "url="+url)
+	}
+	msg.Message = "[CQ:file," + strings.Join(params, ",") + "]"
+
+	file := &GroupUploadFile{
+		ID: fileID, FileID: fileID, Name: name, BusID: busID,
+		Size: size, FileSize: size, URL: url, DirectURL: url,
+	}
+	ctx.Group.TriggerExtHook(ctx.Dice, func(ext *ExtInfo) func() {
+		if ext.OnGroupUpload == nil {
+			return nil
+		}
+		return func() { ext.OnGroupUpload(ctx, msg, file) }
+	})
+
+	// Keep compatibility with plugins that only inspect ordinary CQ:file
+	// messages instead of implementing onGroupUpload.
+	ctx.Session.ExecuteNew(ctx.EndPoint, msg)
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleGroupDecreaseAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	session := p.EndPoint.Session
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	subType := req.Get("sub_type").String()
+	switch subType {
+	case "kick_me":
+		session.OnGroupLeave(ctx, &events.GroupLeaveEvent{
+			GroupID:    canonicalOnebotGroupID(req.Get("group_id").String()),
+			UserID:     canonicalOnebotUserID(req.Get("user_id").String()),
+			OperatorID: canonicalOnebotUserID(req.Get("operator_id").String()),
+		})
+		// 离开群 群解散 别人被踹了
+	case "leave", "disband":
+		// 先获取被操作者，看看是否和自己是同一个人
+		selfID := canonicalOnebotUserID(req.Get("self_id").String())
+		operatorId := canonicalOnebotUserID(req.Get("operator_id").String())
+		if selfID != operatorId {
+			// 别人离开群的情况
+			return nil
+		}
+		groupId := canonicalOnebotGroupID(req.Get("group_id").String())
+		pendingQuit := session.ConsumePendingQuit(groupId, p.EndPoint.UserID)
+		groupName := session.Parent.Parent.TryGetGroupName(groupId)
+		txt := fmt.Sprintf("离开群组或群解散: <%s>(%s)", groupName, groupId)
+		group, exists := session.ServiceAtNew.Load(groupId)
+		if !exists {
+			txtErr := fmt.Sprintf("离开群组或群解散，删除对应群聊信息失败: <%s>(%s)", groupName, groupId)
+			p.logger.Error(txtErr)
+			if pendingQuit == nil || pendingQuit.Origin != QuitOriginAutoInactive || !session.Parent.Config.QuitInactiveNoticeSummaryMode {
+				ctx.Notice(txtErr)
+			}
+			return nil
+		}
+		group.DiceIDExistsMap.Delete(p.EndPoint.UserID)
+		group.MarkDirty(session.Parent)
+		p.logger.Info(txt)
+		if pendingQuit == nil || pendingQuit.Origin != QuitOriginAutoInactive || !session.Parent.Config.QuitInactiveNoticeSummaryMode {
+			ctx.Notice(txt)
+		}
+	}
+
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleGroupPokeAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	go func() {
+		session := p.EndPoint.Session
+		defer ErrorLogAndContinue(session.Parent)
+		msgContext := p.makeCtx(req)
+		isPrivate := msgContext.MessageType == "private"
+		groupID := ""
+		if req.Get("group_id").Exists() {
+			groupID = FormatDiceIDQQGroup(req.Get("group_id").String())
+		}
+		session.OnPoke(msgContext, &events.PokeEvent{
+			GroupID:   groupID,
+			SenderID:  FormatDiceIDQQ(req.Get("user_id").String()),
+			TargetID:  FormatDiceIDQQ(req.Get("target_id").String()),
+			IsPrivate: isPrivate,
+		})
+	}()
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleGroupRecallAction(_ gjson.Result, ep *evsocket.EventPayload) error {
+	session := p.EndPoint.Session
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	msg, err := arrayByte2SealdiceMessage(p.logger, ep.Data)
+	if err != nil {
+		return err
+	}
+	session.OnMessageDeleted(ctx, msg)
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleGroupBanAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	session := p.EndPoint.Session
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	subType := req.Get("sub_type").String()
+	userID := canonicalOnebotUserID(req.Get("user_id").String())
+	selfID := canonicalOnebotUserID(req.Get("self_id").String())
+	groupId := canonicalOnebotGroupID(req.Get("group_id").String())
+	operatorID := canonicalOnebotUserID(req.Get("operator_id").String())
+	durationTime := int(req.Get("duration").Int())
+	duration := time.Duration(durationTime) * time.Second
+	switch subType {
+	case "ban":
+		if userID == selfID {
+			groupName := session.Parent.Parent.TryGetGroupName(groupId)
+			userName := session.Parent.Parent.TryGetUserName(operatorID)
+			ctx.Dice.Config.BanList.AddScoreByGroupMuted(operatorID, groupId, ctx)
+			txt := fmt.Sprintf("被禁言: 在群组<%s>(%s)中被禁言，时长%d秒，操作者:<%s>(%s)", groupName, groupId, duration, userName, operatorID)
+			p.logger.Info(txt)
+			ctx.Notice(txt)
+		}
+	}
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleAddFriendAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	session := p.EndPoint.Session
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	msg, err := arrayByte2SealdiceMessage(p.logger, []byte(req.String()))
+	if err != nil {
+		return err
+	}
+	userId := canonicalOnebotUserID(req.Get("user_id").String())
+	// 先查看
+	ctx.Group, ctx.Player = GetPlayerInfoBySender(ctx, msg)
+	welcomeStr := DiceFormatTmpl(ctx, "核心:骰子成为好友")
+	p.logger.Infof("与 %s 成为好友，发送好友致辞: %s", req.Get("user_id").String(), welcomeStr)
+	_ = p.submitAsync(func() {
+		// 与旧 onebot 链保持一致：上游可能先发 friend_add，再真正建立好友关系。
+		time.Sleep(5 * time.Second)
+		for _, i := range ctx.SplitText(welcomeStr) {
+			doSleepQQ(ctx)
+			p.SendToPerson(ctx, userId, strings.TrimSpace(i), "")
+		}
+		if groupInfo, ok := ctx.Session.ServiceAtNew.Load(msg.GroupID); ok {
+			groupInfo.TriggerExtHook(ctx.Dice, func(ext *ExtInfo) func() {
+				if ext.OnBecomeFriend == nil {
+					return nil
+				}
+				return func() { ext.OnBecomeFriend(ctx, msg) }
+			})
+		}
+	})
+	return nil
+}
+
+func (p *PlatformAdapterOnebot) handleJoinGroupAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	// {"group_id":111,"notice_type":"group_increase","operator_id":0,"post_type":"notice","self_id":333,"sub_type":"approve","time":1646782012,"user_id":333}
+	// 入群要做的事情：
+	// 1. 如果发现进群的是自己，要和大家发入群致辞
+	// 2. 如果发现进群的不是自己，对他进行节流的迎新
+	session := p.EndPoint.Session
+	ctx := &MsgContext{MessageType: "group", EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	msg, err := arrayByte2SealdiceMessage(p.logger, []byte(req.String()))
+	if err != nil {
+		return err
+	}
+	userId := canonicalOnebotUserID(req.Get("user_id").String())
+	selfId := canonicalOnebotUserID(req.Get("self_id").String())
+	groupId := canonicalOnebotGroupID(req.Get("group_id").String())
+	msg.MessageType = "group"
+	msg.Platform = "QQ"
+	msg.GroupID = groupId
+	msg.Sender.UserID = userId
+	// 迎新逻辑
+	// 发送入群致辞逻辑
+	if userId == selfId {
+		p.logger.Infof("收到自己的入群请求，准备转交统一入群处理")
+		ctx.Group = SetBotOnAtGroup(ctx, groupId)
+		operatorID := canonicalOnebotUserID(req.Get("operator_id").String())
+		if operatorID != "" && operatorID != selfId {
+			msg.Sender.UserID = operatorID
+		}
+		_ = p.submitAsync(func() {
+			session.OnGroupJoined(ctx, msg)
+		})
+	} else {
+		p.logger.Infof("收到非自己的入群通知: group_id=%s user_id=%s", groupId, userId)
+		_ = p.submitAsync(func() {
+			session.OnGroupMemberJoined(ctx, msg)
+		})
+	}
+
+	return nil
+}
+
+// 加群逻辑里比较复杂，列在这里
+// 加群：被好友邀请-> 获取群信息 -> 根据获取的群信息，判断是否应该加群
+func (p *PlatformAdapterOnebot) handleReqGroupAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	// 创建虚拟Context
+	session := p.EndPoint.Session
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	switch req.Get("sub_type").String() {
+	case "invite":
+		// 获取群信息
+		diceGroupId := canonicalOnebotGroupID(req.Get("group_id").String())
+		diceUserId := canonicalOnebotUserID(req.Get("user_id").String())
+		userName := session.Parent.Parent.TryGetUserName(diceUserId)
+		res := p.GetGroupCacheInfo(diceGroupId)
+		if res == nil {
+			// 没有群信息，默认群信息创建
+			res = &GroupCache{
+				GroupAllShut:   0,
+				GroupRemark:    "",
+				GroupId:        diceGroupId,
+				GroupName:      "%未知群聊%",
+				MemberCount:    1,
+				MaxMemberCount: 2000,
+			}
+		}
+		// 先判断是否需要加群
+		txt := fmt.Sprintf("收到QQ加群邀请: 群组<%s>(%s) 邀请人:<%s>(%s)", res.GroupName, res.GroupId, userName, diceUserId)
+		p.logger.Info(txt)
+		ctx.Notice(txt, NoticeTypeInvite)
+
+		ok, reason := checkPassBlackListGroup(diceUserId, diceGroupId, ctx)
+		if !ok {
+			p.logger.Infof("群组 %s 加群请求被拒绝，原因为 %s", req.Get("group_id").String(), reason)
+			err := p.submitAsync(func() {
+				err := p.sendEmitter.SetGroupAddRequest(p.ctx, req.Get("flag").String(), req.Get("sub_type").String(), false, reason)
+				if err != nil {
+					p.logger.Errorf("处理加群请求时发送消息失败 %s", err)
+				}
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		// 没问题，加群
+		_ = p.submitAsync(func() {
+			err := p.sendEmitter.SetGroupAddRequest(p.ctx, req.Get("flag").String(), req.Get("sub_type").String(), true, "")
+			if err != nil {
+				p.logger.Errorf("处理加群请求时发送消息失败 %s", err)
+			}
+		})
+	default:
+		// DO NOTHING NOW
+	}
+	return nil
+}
+
+func checkPassBlackListGroup(inviterID string, groupID string, ctx *MsgContext) (bool, string) {
+	userResult := checkBlackList(inviterID, "user", "", ctx)
+	if !userResult.Passed {
+		return false, userResult.Reason
+	}
+	groupResult := checkBlackList(groupID, "group", inviterID, ctx)
+	if !groupResult.Passed {
+		return false, groupResult.Reason
+	}
+	return true, ""
+}
+
+func (p *PlatformAdapterOnebot) handleReqFriendAction(req gjson.Result, _ *evsocket.EventPayload) error {
+	// 只有一种情况 就是好友添加
+	// 获取请求详情
+	flag := req.Get("flag").String()
+	userID := req.Get("user_id").String()
+	if flag != "" {
+		cache, err := p.ensureFriendRequestDedupeCache()
+		if err != nil {
+			p.logger.Warnf("好友申请去重缓存不可用，跳过去重: flag=%s user_id=%s err=%v", flag, userID, err)
+		} else {
+			if _, exists := cache.Get(flag); exists {
+				p.logger.Infof("重复好友申请已跳过: flag=%s user_id=%s", flag, userID)
+				return nil
+			}
+			cache.Set(flag, struct{}{})
+		}
+	}
+	var comment string
+	if req.Get("comment").Exists() {
+		comment = normalizeOnebotFriendRequestComment(req.Get("comment").String())
+	}
+	// 将匹配的验证问题
+	session := p.EndPoint.Session
+	toMatch := strings.TrimSpace(session.Parent.Config.FriendAddComment)
+	// 创建虚构MsgContext
+	ctx := &MsgContext{EndPoint: p.EndPoint, Session: session, Dice: session.Parent}
+	var extra string
+	// 匹配验证问题检查
+	passQuestion := toMatch == "" || comment == DiceFormat(ctx, toMatch) || checkMultiFriendAddVerify(comment, toMatch)
+	// 匹配黑名单检查
+	result := checkBlackList(canonicalOnebotUserID(req.Get("user_id").String()), "user", "", ctx)
+
+	// 格式化请求的数据
+	if comment == "" {
+		comment = "(无)"
+	} else {
+		comment = formatOnebotFriendRequestCommentForLog(comment)
+	}
+	if !passQuestion {
+		extra = "。回答错误"
+	} else {
+		extra = "。回答正确"
+	}
+	if !result.Passed {
+		extra += "。（被禁止用户）"
+		extra += "，原因：" + result.Reason
+	}
+	if p.IgnoreFriendRequest {
+		extra += "。由于设置了忽略邀请，此信息仅为通报"
+	}
+	txt := fmt.Sprintf("收到QQ好友邀请: 邀请人:%s, 验证信息: %s, 是否自动同意: %t%s", req.Get("user_id").String(), comment, passQuestion && result.Passed, extra)
+	p.logger.Info(txt)
+	ctx.Notice(txt, NoticeTypeInvite)
+	// 若忽略邀请，对操作不通过也不拒绝，哪怕他是黑名单里的
+	if !p.IgnoreFriendRequest {
+		err := p.sendEmitter.SetFriendAddRequest(p.ctx, req.Get("flag").String(), result.Passed && passQuestion, "")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var onebotFriendRequestAnswerPattern = regexp.MustCompile(`\n回答:([^\n]+)`)
+var onebotFriendRequestExpectedItemPattern = regexp.MustCompile(`\s+`)
+
+func normalizeOnebotFriendRequestComment(comment string) string {
+	comment = strings.TrimSpace(comment)
+	comment = strings.ReplaceAll(comment, "\u00a0", " ")
+	comment = strings.ReplaceAll(comment, "\r\n", "\n")
+	// 上游可能把好友验证里的换行以字面量转义形式传过来，这里统一还原为真实换行，
+	// 以便问题校验和日志展示看到的是同一种文本布局。
+	comment = strings.ReplaceAll(comment, `\r\n`, "\n")
+	comment = strings.ReplaceAll(comment, `\n`, "\n")
+	return comment
+}
+
+func formatOnebotFriendRequestCommentForLog(comment string) string {
+	// 日志里保留真实换行，避免再次编码成 `\n` 影响人工查看。
+	comment = strings.ReplaceAll(comment, `\`, `\\`)
+	comment = strings.ReplaceAll(comment, `"`, `\"`)
+	return `"` + comment + `"`
+}
+
+func checkMultiFriendAddVerify(comment string, toMatch string) bool {
+	if toMatch == "" {
+		return true
+	}
+
+	matches := onebotFriendRequestAnswerPattern.FindAllStringSubmatch(comment, -1)
+	answers := make([]string, 0, len(matches))
+	for _, match := range matches {
+		answer := strings.TrimSpace(strings.ReplaceAll(match[1], "\u00a0", " "))
+		answers = append(answers, answer)
+	}
+
+	expectedItems := onebotFriendRequestExpectedItemPattern.Split(toMatch, -1)
+	if len(expectedItems) != len(answers) {
+		return false
+	}
+
+	for i, item := range expectedItems {
+		expected := strings.TrimSpace(strings.ReplaceAll(item, "\u00a0", " "))
+		if expected != answers[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+type BlackListCheckResult struct {
+	Passed      bool
+	FailureType string           // "user_banned", "group_banned", "trust_mode", "refuse_invite"
+	Reason      string           // 具体原因
+	BanInfo     *BanListInfoItem // 详细的封禁信息，用于后续逻辑
+}
+
+// checkBlackList 检查用户或群组是否通过黑名单检查
+// 参数:
+//   - userId: 用户ID或群组ID
+//   - checkType: 检查类型，"user"或"group"
+//   - ctx: 消息上下文
+//
+// 返回值:
+//   - BlackListCheckResult: 包含检查结果和详细信息
+func checkBlackList(id string, checkType string, inviterID string, ctx *MsgContext) BlackListCheckResult {
+	result := BlackListCheckResult{
+		Passed: true,
+	}
+
+	if id == "" {
+		return result
+	}
+
+	banInfo, ok := ctx.Dice.Config.BanList.GetByID(id)
+	if !ok || banInfo == nil {
+		if checkType != "group" {
+			return result
+		}
+		if ctx.Dice.Config.RefuseGroupInvite {
+			result.Passed = false
+			result.FailureType = "refuse_invite"
+			result.Reason = "拒绝拉群邀请"
+			return result
+		}
+		if inviterID != "" {
+			isMaster := ctx.Dice.IsMaster(inviterID)
+			if ctx.Dice.Config.TrustOnlyMode && !isMaster {
+				result.Passed = false
+				result.FailureType = "trust_mode"
+				result.Reason = "只允许信任的人拉群"
+				return result
+			}
+		}
+		return result
+	}
+
+	result.BanInfo = banInfo
+
+	switch checkType {
+	case "user":
+		// 检查用户是否被ban且配置了拒绝邀请
+		if banInfo.Rank == BanRankBanned && ctx.Dice.Config.BanList.BanBehaviorRefuseInvite {
+			result.Passed = false
+			result.FailureType = "user_banned"
+			result.Reason = "邀请人在黑名单上"
+		}
+	case "group":
+		// 检查群组是否被ban
+		if banInfo.Rank == BanRankBanned {
+			result.Passed = false
+			result.FailureType = "group_banned"
+			result.Reason = "群组在黑名单上"
+			return result
+		}
+
+		// 信任模式检查
+		isMaster := inviterID != "" && ctx.Dice.IsMaster(inviterID)
+		if ctx.Dice.Config.TrustOnlyMode && banInfo.Rank != BanRankTrusted && !isMaster {
+			result.Passed = false
+			result.FailureType = "trust_mode"
+			result.Reason = "只允许信任的人拉群"
+			return result
+		}
+
+		// 拒绝所有群邀请的配置检查
+		if ctx.Dice.Config.RefuseGroupInvite {
+			result.Passed = false
+			result.FailureType = "refuse_invite"
+			result.Reason = "拒绝拉群邀请"
+		}
+	}
+
+	return result
+}
+
+func (p *PlatformAdapterOnebot) submitAsync(task func()) error {
+	if p != nil && p.antPool != nil {
+		return p.antPool.Submit(task)
+	}
+	return ants.Submit(task)
+}
+
+func (p *PlatformAdapterOnebot) onOnebotMetaDataEvent(ep *evsocket.EventPayload) {
+
+}
+
+type GroupCache struct {
+	GroupAllShut   int    `json:"group_all_shut"`   // 是否全员禁言
+	GroupRemark    string `json:"group_remark"`     // 群备注
+	GroupId        string `json:"group_id"`         // 群ID
+	GroupName      string `json:"group_name"`       // 群名
+	MemberCount    int    `json:"member_count"`     // 群人数
+	MaxMemberCount int    `json:"max_member_count"` // 群最大人数
+}
+
+func FormatOnebotDiceIDQQ(diceQQ string) string {
+	return fmt.Sprintf("QQ:%s", diceQQ)
+}
+
+func FormatOnebotDiceIDQQGroup(diceQQ string) string {
+	return fmt.Sprintf("QQ-Group:%s", diceQQ)
+}
+
+func canonicalOnebotUserID(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "QQ:") {
+		return raw
+	}
+	return FormatOnebotDiceIDQQ(raw)
+}
+
+func canonicalOnebotGroupID(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "QQ-Group:") {
+		return raw
+	}
+	return FormatOnebotDiceIDQQGroup(raw)
+}
+
+type MessageQQOBBase struct {
+	MessageID     int64                  `json:"message_id"`   // QQ信息此类型为int64，频道中为string
+	MessageType   string                 `json:"message_type"` // Group
+	Sender        *Sender                `json:"sender"`       // 发送者
+	RawMessage    string                 `json:"raw_message"`
+	Time          int64                  `json:"time"` // 发送时间
+	MetaEventType string                 `json:"meta_event_type"`
+	OperatorID    sonic.NoCopyRawMessage `json:"operator_id"`  // 操作者帐号
+	GroupID       sonic.NoCopyRawMessage `json:"group_id"`     // 群号
+	PostType      string                 `json:"post_type"`    // 上报类型，如group、notice
+	RequestType   string                 `json:"request_type"` // 请求类型，如group
+	SubType       string                 `json:"sub_type"`     // 子类型，如add invite
+	Flag          string                 `json:"flag"`         // 请求 flag, 在调用处理请求的 API 时需要传入
+	NoticeType    string                 `json:"notice_type"`
+	UserID        sonic.NoCopyRawMessage `json:"user_id"`
+	SelfID        sonic.NoCopyRawMessage `json:"self_id"`
+	Duration      int64                  `json:"duration"`
+	Comment       string                 `json:"comment"`
+	TargetID      sonic.NoCopyRawMessage `json:"target_id"`
+
+	Data *struct {
+		// 个人信息
+		Nickname string                 `json:"nickname"`
+		UserID   sonic.NoCopyRawMessage `json:"user_id"`
+
+		// 群信息
+		GroupID         sonic.NoCopyRawMessage `json:"group_id"`          // 群号
+		GroupCreateTime uint32                 `json:"group_create_time"` // 群号
+		MemberCount     int64                  `json:"member_count"`
+		GroupName       string                 `json:"group_name"`
+		MaxMemberCount  int32                  `json:"max_member_count"`
+
+		// 群成员信息
+		Card string `json:"card"`
+	} `json:"data"`
+	Retcode int64 `json:"retcode"`
+	// Status string `json:"status"`
+	Echo sonic.NoCopyRawMessage `json:"echo"` // 声明类型而不是interface的原因是interface下数字不能正确转换
+
+	Msg string `json:"msg"`
+	// Status  interface{} `json:"status"`
+	Wording string `json:"wording"`
+}
+
+type MessageOBQQ struct {
+	MessageQQOBBase
+}
+
+func (msgQQ *MessageOBQQ) toStdMessage() *Message {
+	msg := new(Message)
+	msg.Time = msgQQ.Time
+	msg.MessageType = msgQQ.MessageType
+	msg.RawID = msgQQ.MessageID
+	msg.Platform = "QQ"
+
+	if msg.MessageType == "" {
+		msg.MessageType = "private"
+	}
+
+	if msgQQ.Data != nil && len(msgQQ.Data.GroupID) > 0 {
+		msg.GroupID = canonicalOnebotGroupID(string(msgQQ.Data.GroupID))
+	}
+	if string(msgQQ.GroupID) != "" {
+		if msg.MessageType == "private" {
+			msg.MessageType = "group"
+		}
+		msg.GroupID = canonicalOnebotGroupID(string(msgQQ.GroupID))
+	}
+	if msgQQ.Sender != nil {
+		msg.Sender.Nickname = msgQQ.Sender.Nickname
+		if msgQQ.Sender.Card != "" {
+			msg.Sender.Nickname = msgQQ.Sender.Card
+		}
+		msg.Sender.GroupRole = msgQQ.Sender.Role
+		msg.Sender.UserID = canonicalOnebotUserID(string(msgQQ.Sender.UserID))
+		msg.Sender.IsRobot = msgQQ.Sender.IsRobot || isQQBotUserID(msg.Sender.UserID)
+	}
+	return msg
+}
+
+func arrayByte2SealdiceMessage(log *zap.SugaredLogger, raw []byte) (*Message, error) {
+	// 不合法的信息体
+	if !gjson.ValidBytes(raw) {
+		log.Warn("无法解析 onebot11 字段:", raw)
+		return nil, errors.New("解析失败")
+	}
+	var obMsg MessageOBQQ
+	// 原版本转换为gjson对象
+	parseContent := gjson.ParseBytes(raw)
+	err := sonic.Unmarshal(raw, &obMsg)
+	if err != nil {
+		return nil, err
+	}
+	m := obMsg.toStdMessage()
+	arrayContent := parseContent.Get("message").Array()
+	seg := make([]message.IMessageElement, 0)
+	cqMessage := strings.Builder{}
+	for _, i := range arrayContent {
+		// 使用String()方法，如果为空，会自动产生空字符串
+		typeStr := i.Get("type").String()
+		dataObj := i.Get("data")
+		switch typeStr {
+		case "text":
+			rawTxt := dataObj.Get("text").String()
+			seg = append(seg, &message.TextElement{
+				Content: rawTxt,
+			})
+			cqMessage.WriteString(rawTxt)
+		case "image":
+			rawImg := &message.ImageElement{
+				File: &message.FileElement{
+					URL: dataObj.Get("file").String(),
+				},
+			}
+			// 兼容NC情况, 此时file字段只有文件名, 完整URL在url字段
+			if !hasURLScheme(dataObj.Get("file").String()) && hasURLScheme(dataObj.Get("url").String()) {
+				rawImg.File.URL = dataObj.Get("url").String()
+				_, _ = fmt.Fprintf(&cqMessage, "[CQ:image,file=%v]", dataObj.Get("url").String())
+			} else {
+				rawImg.File.URL = dataObj.Get("file").String()
+				_, _ = fmt.Fprintf(&cqMessage, "[CQ:image,file=%v]", dataObj.Get("file").String())
+			}
+			seg = append(seg, rawImg)
+		case "face":
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:face,id=%v]", dataObj.Get("id").String())
+			seg = append(seg, &message.FaceElement{FaceID: dataObj.Get("id").String()})
+		case "record":
+			recordRaw := message.RecordElement{File: &message.FileElement{
+				URL: "",
+			}}
+			// 兼容NC情况, 此时file字段只有文件名, 完整路径在path字段
+			if !hasURLScheme(dataObj.Get("file").String()) && dataObj.Get("path").String() != "" {
+				recordRaw.File.URL = dataObj.Get("path").String()
+				_, _ = fmt.Fprintf(&cqMessage, "[CQ:record,file=%v]", dataObj.Get("path").String())
+			} else {
+				recordRaw.File.URL = dataObj.Get("file").String()
+				_, _ = fmt.Fprintf(&cqMessage, "[CQ:record,file=%v]", dataObj.Get("file").String())
+			}
+			seg = append(seg, &recordRaw)
+		case "at":
+			target := dataObj.Get("qq").String()
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:at,qq=%v]", target)
+			seg = append(seg, &message.AtElement{
+				Target:  target,
+				IsRobot: dataObj.Get("is_robot").Bool() || isQQBotUserID(canonicalOnebotUserID(target)),
+			})
+		case "poke":
+			cqMessage.WriteString("[CQ:poke]")
+			seg = append(seg, &message.PokeElement{})
+		case "reply":
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:reply,id=%v]", dataObj.Get("id").String())
+			seg = append(seg, &message.ReplyElement{
+				ReplySeq: dataObj.Get("id").String(),
+			})
+		default:
+			// 转换为CQ码
+			var params []string
+			dMap := dataObj.Map()
+			for paramStr, paramValue := range dMap {
+				params = append(params, fmt.Sprintf("%s=%s", paramStr, paramValue))
+			}
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:%s,%s]", typeStr, strings.Join(params, ","))
+			// 生成对应的DefaultElement
+			seg = append(seg, &message.DefaultElement{
+				RawType: typeStr,
+				Data:    sonic.NoCopyRawMessage(dataObj.String()),
+			})
+		}
+	}
+	// 获取Message
+	m.Message = cqMessage.String()
+	// 获取Segment
+	m.Segment = seg
+	return m, nil
+}
+
+// 将OB11的Array数据转换为string字符串 确实没在使用，但备份一下这个实用函数
+// func array2string(parseContent gjson.Result) (gjson.Result, error) {
+//	arrayContent := parseContent.Get("message").Array()
+//	cqMessage := strings.Builder{}
+//
+//	for _, i := range arrayContent {
+//		typeStr := i.Get("type").String()
+//		dataObj := i.Get("data")
+//		switch typeStr {
+//		case "text":
+//			cqMessage.WriteString(dataObj.Get("text").String())
+//		case "image":
+//			// 兼容NC情况, 此时file字段只有文件名, 完整URL在url字段
+//			if !hasURLScheme(dataObj.Get("file").String()) && hasURLScheme(dataObj.Get("url").String()) {
+//				cqMessage.WriteString(fmt.Sprintf("[CQ:image,file=%v]", dataObj.Get("url").String()))
+//			} else {
+//				cqMessage.WriteString(fmt.Sprintf("[CQ:image,file=%v]", dataObj.Get("file").String()))
+//			}
+//		case "face":
+//			// 兼容四叶草，移除 .(string)。自动获取的信息表示此类型为 float64，这是go解析的问题
+//			cqMessage.WriteString(fmt.Sprintf("[CQ:face,id=%v]", dataObj.Get("id").String()))
+//		case "record":
+//			// 兼容NC情况, 此时file字段只有文件名, 完整路径在path字段
+//			if !hasURLScheme(dataObj.Get("file").String()) && dataObj.Get("path").String() != "" {
+//				cqMessage.WriteString(fmt.Sprintf("[CQ:record,file=%v]", dataObj.Get("path").String()))
+//			} else {
+//				cqMessage.WriteString(fmt.Sprintf("[CQ:record,file=%v]", dataObj.Get("file").String()))
+//			}
+//		case "at":
+//			cqMessage.WriteString(fmt.Sprintf("[CQ:at,qq=%v]", dataObj.Get("qq").String()))
+//		case "poke":
+//			cqMessage.WriteString(fmt.Sprintf("[CQ:poke,qq=%v]", dataObj.Get("qq").String()))
+//		case "reply":
+//			cqMessage.WriteString(fmt.Sprintf("[CQ:reply,id=%v]", dataObj.Get("id").String()))
+//		default:
+//			var cqParam string
+//			dMap := dataObj.Map()
+//			for paramStr, paramValue := range dMap {
+//				cqParam += fmt.Sprintf("%s=%s", paramStr, paramValue)
+//			}
+//			cqMessage.WriteString(fmt.Sprintf("[CQ:%s,%s]", typeStr, cqParam))
+//		}
+//	}
+//	// 赋值对应的Message
+//	tempStr, err := sjson.Set(parseContent.String(), "message", cqMessage.String())
+//	if err != nil {
+//		return gjson.Result{}, err
+//	}
+//	return gjson.Parse(tempStr), nil
+// }
+
+// 将CQ码字符串消息转换为OB11 Array格式
+func string2array(parseContent gjson.Result) (gjson.Result, error) {
+	messageStr := parseContent.Get("message").String()
+	var messageArray []map[string]interface{}
+
+	// 使用正则表达式匹配CQ码和普通文本
+	re := regexp.MustCompile(`(\[CQ:\w+,[^\]]+\])|([^\[\]]+)`)
+	matches := re.FindAllStringSubmatch(messageStr, -1)
+
+	for _, match := range matches {
+		if match[1] != "" {
+			// 处理CQ码
+			cqCode := match[1]
+			cqType := strings.TrimPrefix(strings.Split(cqCode, ",")[0], "[CQ:")
+			cqType = strings.TrimSuffix(cqType, "]")
+
+			// 解析CQ码参数
+			params := make(map[string]string)
+			paramPairs := strings.Split(strings.TrimSuffix(strings.Split(cqCode, ",")[1], "]"), ",")
+			for _, pair := range paramPairs {
+				kv := strings.SplitN(pair, "=", 2)
+				if len(kv) == 2 {
+					params[kv[0]] = kv[1]
+				}
+			}
+
+			// 转换为OB11格式
+			item := map[string]interface{}{
+				"type": cqType,
+				"data": params,
+			}
+			messageArray = append(messageArray, item)
+		} else if match[2] != "" {
+			// 处理普通文本
+			item := map[string]interface{}{
+				"type": "text",
+				"data": map[string]string{
+					"text": match[2],
+				},
+			}
+			messageArray = append(messageArray, item)
+		}
+	}
+
+	// 赋值对应的Message
+	tempStr, err := sjson.Set(parseContent.String(), "message", messageArray)
+	if err != nil {
+		return gjson.Result{}, err
+	}
+	return gjson.Parse(tempStr), nil
+}
+
+func convertSealMsgToMessageChain(msg []message.IMessageElement) (schema.MessageChain, string) {
+	cqMessage := strings.Builder{}
+	rawMsg := schema.MessageChain{}
+	for _, v := range msg {
+		switch v.Type() {
+		case message.At:
+			res, ok := v.(*message.AtElement)
+			if !ok {
+				continue
+			}
+			rawMsg = rawMsg.At(res.Target)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:at,qq=%v]", res.Target)
+		case message.Text:
+			res, ok := v.(*message.TextElement)
+			if !ok {
+				continue
+			}
+			rawMsg = rawMsg.Text(res.Content)
+			cqMessage.WriteString(res.Content)
+		case message.Face:
+			res, ok := v.(*message.FaceElement)
+			if !ok {
+				continue
+			}
+			rawMsg = rawMsg.Face(res.FaceID)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:face,id=%v]", res.FaceID)
+		case message.File:
+			res, ok := v.(*message.FileElement)
+			if !ok {
+				continue
+			}
+			// URL 保存可直接发送的完整资源引用；File 对本地文件通常只有文件名。
+			fileVal := res.URL
+			if fileVal == "" {
+				fileVal = res.File
+			}
+			if fileVal == "" {
+				continue
+			}
+			rawMsg = rawMsg.File(fileVal)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:file,file=%v]", fileVal)
+		case message.Image:
+			res, ok := v.(*message.ImageElement)
+			if !ok {
+				continue
+			}
+			url := res.URL
+			if res.URL == "" {
+				url = res.File.URL
+			}
+			rawMsg = rawMsg.Image(url)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:image,file=%v]", url)
+		case message.Record:
+			res, ok := v.(*message.RecordElement)
+			if !ok {
+				continue
+			}
+			var recordFile string
+			if res.File != nil {
+				recordFile = res.File.URL
+				if recordFile == "" {
+					recordFile = res.File.File
+				}
+			}
+			if recordFile == "" {
+				continue
+			}
+			rawMsg = rawMsg.Record(recordFile)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:record,file=%v]", recordFile)
+		case message.Reply:
+			res, ok := v.(*message.ReplyElement)
+			if !ok {
+				continue
+			}
+			parseInt, err := strconv.Atoi(res.ReplySeq)
+			if err != nil {
+				continue
+			}
+			rawMsg = rawMsg.Reply(parseInt)
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:reply,id=%v]", parseInt)
+		case message.Poke:
+			res, ok := v.(*message.PokeElement)
+			if !ok {
+				continue
+			}
+			m := map[string]string{
+				"qq": res.Target,
+			}
+			marshal, err := sonic.Marshal(m)
+			if err != nil {
+				continue
+			}
+			rawMsg = rawMsg.Append(schema.Message{
+				Type: "poke",
+				Data: marshal,
+			})
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:poke,qq=%v]", res.Target)
+		default:
+			res, ok := v.(*message.DefaultElement)
+			if !ok {
+				continue
+			}
+			rawMsg = rawMsg.Append(schema.Message{
+				Type: res.RawType,
+				Data: res.Data,
+			})
+			// 将其转换为CQ码
+			var params []string
+			dMap := gjson.ParseBytes(res.Data).Map()
+			for paramStr, paramValue := range dMap {
+				params = append(params, fmt.Sprintf("%s=%s", paramStr, paramValue))
+			}
+			_, _ = fmt.Fprintf(&cqMessage, "[CQ:%s,%s]", res.RawType, strings.Join(params, ","))
+		}
+	}
+	messageStr := cqMessage.String()
+	return rawMsg, messageStr
+}
+
+func ExtractQQEmitterUserID(id string) int64 {
+	id = canonicalOnebotUserID(id)
+	if strings.HasPrefix(id, "QQ:") {
+		atoi, _ := strconv.ParseInt(id[len("QQ:"):], 10, 64)
+		return atoi
+	}
+	return 0
+}
+
+func ExtractQQEmitterGroupID(id string) int64 {
+	id = canonicalOnebotGroupID(id)
+	if strings.HasPrefix(id, "QQ-Group:") {
+		atoi, _ := strconv.ParseInt(id[len("QQ-Group:"):], 10, 64)
+		return atoi
+	}
+	return 0
+}
+
+func (p *PlatformAdapterOnebot) makeCtx(req gjson.Result) *MsgContext {
+	ep := p.EndPoint
+	session := ep.Session
+	var messageType = "private"
+	if req.Get("group_id").Exists() {
+		messageType = "group"
+	}
+	ctx := &MsgContext{MessageType: messageType, EndPoint: ep, Session: session, Dice: session.Parent}
+	wrapper := MessageWrapper{
+		MessageType: ctx.MessageType,
+		GroupID:     canonicalOnebotGroupID(req.Get("group_id").String()),
+		Sender: struct {
+			UserID   string
+			Nickname string
+		}{},
+		// TODO: 这两个暂时不知道干啥的
+		GuildID:   "",
+		ChannelID: "",
+	}
+	switch ctx.MessageType {
+	case "private":
+		// 私聊戳一戳可能拿不到用户信息（协议端异常/限流等），退化为仅依赖 user_id 的上下文。
+		wrapper.Sender.UserID = canonicalOnebotUserID(req.Get("user_id").String())
+		info, err := p.sendEmitter.GetStrangerInfo(p.ctx, req.Get("user_id").Int(), false)
+		if err == nil {
+			wrapper.Sender.UserID = canonicalOnebotUserID(strconv.FormatInt(info.UserId, 10))
+			wrapper.Sender.Nickname = info.NickName
+		}
+		ctx.Group, ctx.Player = GetPlayerInfoBySenderRaw(ctx, &wrapper)
+		if ctx.Player.Name == "" {
+			if wrapper.Sender.Nickname != "" {
+				ctx.Player.Name = wrapper.Sender.Nickname
+			} else {
+				ctx.Player.Name = wrapper.Sender.UserID
+			}
+			ctx.Player.UpdatedAtTime = time.Now().Unix()
+			if ctx.Group != nil {
+				ctx.Group.MarkDirty(ctx.Dice)
+			}
+		}
+		if wrapper.Sender.Nickname != "" {
+			SetTempVars(ctx, wrapper.Sender.Nickname)
+		}
+	case "group":
+		groupID, _ := strconv.ParseInt(req.Get("group_id").String(), 10, 64)
+		userID, _ := strconv.ParseInt(req.Get("user_id").String(), 10, 64)
+		memberInfo, err := p.sendEmitter.GetGroupMemberInfo(p.ctx, groupID, userID, false)
+		// 群戳一戳事件中，获取群成员信息可能失败（协议端异常/限流/机器人不在群等）。
+		// 这种情况下仍构造最小上下文，避免后续处理链路空指针崩溃。
+		wrapper.Sender.UserID = canonicalOnebotUserID(req.Get("user_id").String())
+		if err == nil {
+			wrapper.Sender.UserID = canonicalOnebotUserID(strconv.FormatInt(memberInfo.UserId, 10))
+			wrapper.Sender.Nickname = memberInfo.Nickname
+		}
+		ctx.Group, ctx.Player = GetPlayerInfoBySenderRaw(ctx, &wrapper)
+		if ctx.Group == nil {
+			// 注意：GetPlayerInfoBySenderRaw 内部已调用 SetBotOnAtGroup，正常不会返回 nil
+			// 若仍为 nil，说明出现异常情况，此处使用 SetBotOnAtGroup 确保群组被正确存入全局列表
+			gi := p.GetGroupCacheInfo(canonicalOnebotGroupID(req.Get("group_id").String()))
+			ctx.Group = SetBotOnAtGroup(ctx, gi.GroupId)
+			ctx.Group.GroupName = gi.GroupName
+			ctx.Group.MarkDirty(ctx.Dice)
+		}
+		if ctx.Player == nil {
+			ctx.Player = &GroupPlayerInfo{UserID: wrapper.Sender.UserID}
+		}
+		if ctx.Player.Name == "" {
+			if err == nil {
+				if memberInfo.Card == "" {
+					ctx.Player.Name = memberInfo.Nickname
+				} else {
+					ctx.Player.Name = memberInfo.Card
+				}
+			} else {
+				ctx.Player.Name = wrapper.Sender.UserID
+			}
+			ctx.Player.UpdatedAtTime = time.Now().Unix()
+			if ctx.Group != nil {
+				ctx.Group.MarkDirty(ctx.Dice)
+			}
+		}
+		if wrapper.Sender.Nickname != "" {
+			SetTempVars(ctx, wrapper.Sender.Nickname)
+		}
+	}
+
+	return ctx
+}

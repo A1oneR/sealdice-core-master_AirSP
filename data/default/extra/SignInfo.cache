@@ -1,0 +1,31 @@
+[
+  {
+    "version": "41857",
+    "appinfo": {
+      "AppClientVersion": 41857,
+      "AppId": 1600001615,
+      "AppIdQrCode": 13697054,
+      "CurrentVersion": "3.2.21-41857",
+      "Kernel": "Linux",
+      "MainSigMap": 169742560,
+      "MiscBitmap": 32764,
+      "NTLoginType": 1,
+      "Os": "Linux",
+      "PackageName": "com.tencent.qq",
+      "PtVersion": "2.0.0",
+      "SsoVersion": 19,
+      "SubAppId": 537320197,
+      "SubSigMap": 0,
+      "VendorOs": "linux",
+      "WtLoginSdk": "nt.wtlogin.0.0.1"
+    },
+    "servers": [
+      {
+        "name": "RSign",
+        "url": "https://kic.cblkseal.tech/api/sign/41857",
+        "selected": true,
+        "note": "无法登录的话加群看公告"
+      }
+    ]
+  }
+]

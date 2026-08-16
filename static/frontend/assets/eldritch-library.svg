@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#07110f"/>
+      <stop offset="0.55" stop-color="#10211b"/>
+      <stop offset="1" stop-color="#080b09"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#160d09"/>
+      <stop offset="0.5" stop-color="#352015"/>
+      <stop offset="1" stop-color="#120a07"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="25%" r="60%">
+      <stop stop-color="#d4b56c" stop-opacity=".22"/>
+      <stop offset=".45" stop-color="#526f4d" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grain" width="140" height="64" patternUnits="userSpaceOnUse">
+      <path d="M0 17C34 7 73 28 140 12M0 43c50-15 91 13 140-5" fill="none" stroke="#b78b55" stroke-opacity=".05" stroke-width="2"/>
+    </pattern>
+    <filter id="blur"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#room)"/>
+  <rect width="1920" height="1080" fill="url(#lamp)"/>
+  <g opacity=".72">
+    <g fill="url(#wood)" stroke="#8b663d" stroke-opacity=".18" stroke-width="3">
+      <rect x="0" y="0" width="330" height="940"/>
+      <rect x="1590" y="0" width="330" height="940"/>
+    </g>
+    <g stroke="#a68452" stroke-opacity=".16" stroke-width="9">
+      <path d="M18 215h290M18 440h290M18 665h290M18 890h290"/>
+      <path d="M1612 215h290M1612 440h290M1612 665h290M1612 890h290"/>
+    </g>
+    <g>
+      <path d="M40 45h34v155H40zm42 35h27v120H82zm36-18h48v138h-48zm56 30h29v108h-29zm38-41h56v149h-56z" fill="#493020"/>
+      <path d="M1642 48h48v152h-48zm57 26h31v126h-31zm40-14h52v140h-52zm62 37h30v103h-30zm39-48h44v151h-44z" fill="#493020"/>
+      <path d="M42 245h55v178H42zm65 31h33v147h-33zm42-15h43v162h-43zm52 28h64v134h-64z" fill="#2d4438"/>
+      <path d="M1640 252h38v171h-38zm48 29h58v142h-58zm68-12h31v154h-31zm41 17h69v137h-69z" fill="#2d4438"/>
+      <path d="M38 472h35v171H38zm44 20h61v151H82zm70-11h41v162h-41zm50 34h66v128h-66z" fill="#59432a"/>
+      <path d="M1638 470h61v173h-61zm70 25h38v148h-38zm47-18h50v166h-50zm59 35h54v131h-54z" fill="#59432a"/>
+      <path d="M42 694h49v174H42zm58 29h34v145h-34zm43-18h70v163h-70zm79 42h44v121h-44z" fill="#273c34"/>
+      <path d="M1642 699h34v169h-34zm43 17h67v152h-67zm76-9h42v161h-42zm51 36h58v125h-58z" fill="#273c34"/>
+    </g>
+  </g>
+  <path d="M0 870C400 820 598 940 960 900s620-73 960-12v192H0z" fill="url(#wood)"/>
+  <path d="M0 870C400 820 598 940 960 900s620-73 960-12" fill="none" stroke="#b88b55" stroke-opacity=".22" stroke-width="5"/>
+  <rect y="870" width="1920" height="210" fill="url(#grain)" opacity=".8"/>
+  <g transform="translate(960 580)" fill="none" stroke="#b79b64" stroke-opacity=".055">
+    <circle r="235" stroke-width="3"/>
+    <circle r="176" stroke-width="2"/>
+    <path d="M0-235 56-76l168 3-136 99 50 160L0 92l-138 94 50-160-136-99 168-3z" stroke-width="2"/>
+    <path d="M-235 0h470M0-235v470M-166-166l332 332M166-166l-332 332"/>
+  </g>
+  <ellipse cx="960" cy="250" rx="430" ry="220" fill="#d6c17e" opacity=".035" filter="url(#blur)"/>
+</svg>

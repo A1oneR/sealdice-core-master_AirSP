@@ -1,0 +1,22 @@
+{
+  "packages": {
+    "error2913/aiplugin4": {
+      "version": "4.15.1",
+      "state": "enabled",
+      "installTime": "2026-08-14T22:40:36.6170208+08:00",
+      "installPath": "cache\\packages\\error2913\\aiplugin4",
+      "sourcePath": "data\\packages\\error2913\\aiplugin4@4.15.1.sealpack",
+      "userDataPath": "data\\extensions\\error2913\\aiplugin4\\_userdata",
+      "config": {}
+    },
+    "error2913/aiplugin4-full": {
+      "version": "4.15.1",
+      "state": "enabled",
+      "installTime": "2026-08-14T22:40:53.1968689+08:00",
+      "installPath": "cache\\packages\\error2913\\aiplugin4-full",
+      "sourcePath": "data\\packages\\error2913\\aiplugin4-full@4.15.1.sealpack",
+      "userDataPath": "data\\extensions\\error2913\\aiplugin4-full\\_userdata",
+      "config": {}
+    }
+  }
+}

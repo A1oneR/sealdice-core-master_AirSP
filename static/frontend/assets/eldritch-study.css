@@ -1,0 +1,786 @@
+@charset "UTF-8";
+
+:root.eldritch-study {
+  --study-ink: #e8dec4;
+  --study-muted: #aeaa94;
+  --study-green: #547d68;
+  --study-green-bright: #76a98d;
+  --study-brass: #b99758;
+  --study-brass-light: #d8bd79;
+  --study-walnut: #24150e;
+  --study-panel: rgba(21, 28, 23, 0.93);
+  --study-panel-soft: rgba(30, 39, 32, 0.88);
+  --study-paper: #d8c9a4;
+  --study-x: 0px;
+  --study-y: 0px;
+  --el-color-primary: #6f9b80;
+  --el-color-primary-rgb: 111, 155, 128;
+  --el-color-primary-light-3: #87ab94;
+  --el-color-primary-light-5: #9ab8a5;
+  --el-color-primary-light-7: #3a5143;
+  --el-color-primary-light-8: #2b3d33;
+  --el-color-primary-light-9: #223129;
+  --el-color-primary-dark-2: #567b65;
+  --el-color-success: #759469;
+  --el-color-warning: #c29a55;
+  --el-color-danger: #a9554e;
+  --el-color-error: #a9554e;
+  --el-color-info: #8e9488;
+  --el-bg-color: #18211b;
+  --el-bg-color-page: #101713;
+  --el-bg-color-overlay: #202b24;
+  --el-fill-color: #253128;
+  --el-fill-color-light: #2a382e;
+  --el-fill-color-lighter: #314137;
+  --el-fill-color-extra-light: #34463a;
+  --el-fill-color-dark: #151d18;
+  --el-fill-color-darker: #0e1511;
+  --el-fill-color-blank: #1b251f;
+  --el-text-color-primary: #e8dec4;
+  --el-text-color-regular: #cdc5ae;
+  --el-text-color-secondary: #a9a58f;
+  --el-text-color-placeholder: #777d70;
+  --el-text-color-disabled: #656b61;
+  --el-border-color: #526052;
+  --el-border-color-light: #465348;
+  --el-border-color-lighter: #39463d;
+  --el-border-color-extra-light: #303b34;
+  --el-border-color-dark: #6d7058;
+  --el-border-color-darker: #817859;
+  --el-mask-color: rgba(5, 9, 7, 0.88);
+  --el-mask-color-extra-light: rgba(5, 9, 7, 0.45);
+  --el-box-shadow: 0 18px 55px rgba(0, 0, 0, 0.42), inset 0 1px rgba(232, 222, 196, 0.04);
+  --el-box-shadow-light: 0 9px 30px rgba(0, 0, 0, 0.36);
+  --el-border-radius-base: 3px;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0a100d url("./eldritch-library.svg") center / cover fixed no-repeat !important;
+}
+
+body {
+  color: var(--study-ink);
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20px;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 4%, rgba(210, 181, 105, 0.13), transparent 31%),
+    linear-gradient(90deg, rgba(2, 5, 4, 0.48), transparent 22%, transparent 78%, rgba(2, 5, 4, 0.48)),
+    radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.55) 100%);
+  transform: translate(var(--study-x), var(--study-y));
+  transition: transform 0.6s cubic-bezier(.2, .8, .2, 1);
+}
+
+#app {
+  position: relative;
+  z-index: 2;
+  color: var(--study-ink) !important;
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "Microsoft YaHei", serif !important;
+}
+
+.eldritch-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.eldritch-glow {
+  position: absolute;
+  top: -22vh;
+  left: 28vw;
+  width: 44vw;
+  height: 62vh;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(207, 177, 100, 0.09), rgba(83, 117, 87, 0.035) 42%, transparent 70%);
+  filter: blur(12px);
+  animation: eldritch-breathe 8s ease-in-out infinite alternate;
+}
+
+.eldritch-sigil {
+  position: absolute;
+  right: 3.5rem;
+  bottom: 2.5rem;
+  width: 230px;
+  aspect-ratio: 1;
+  opacity: 0.055;
+  border: 1px solid var(--study-brass-light);
+  border-radius: 50%;
+  background:
+    linear-gradient(30deg, transparent 49.6%, var(--study-brass-light) 50%, transparent 50.4%),
+    linear-gradient(90deg, transparent 49.6%, var(--study-brass-light) 50%, transparent 50.4%),
+    linear-gradient(150deg, transparent 49.6%, var(--study-brass-light) 50%, transparent 50.4%),
+    radial-gradient(circle, transparent 43%, var(--study-brass-light) 43.5%, transparent 44.5%);
+  animation: eldritch-turn 100s linear infinite;
+}
+
+.eldritch-dust i {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: #e9d69b;
+  box-shadow: 0 0 7px rgba(233, 214, 155, 0.6);
+  opacity: 0;
+  animation: eldritch-drift var(--duration) linear var(--delay) infinite;
+}
+
+.el-container,
+.el-main,
+.main-container {
+  background: transparent !important;
+}
+
+/* The compiled UI wraps every route in this Tailwind light canvas. */
+.eldritch-study .bg-gray-100 {
+  --tw-bg-opacity: 1 !important;
+  background:
+    linear-gradient(135deg, rgba(216, 189, 121, 0.025), transparent 32%),
+    rgba(12, 20, 16, 0.84) !important;
+  color: var(--study-ink) !important;
+  box-shadow: inset 0 1px rgba(216, 189, 121, 0.08);
+  backdrop-filter: blur(4px);
+}
+
+.eldritch-study .bg-gray-600 {
+  --tw-bg-opacity: 1 !important;
+  background: rgba(7, 12, 9, 0.92) !important;
+}
+
+.main-container {
+  position: relative;
+  padding: 1.6rem 1.8rem 2.2rem !important;
+}
+
+.el-header,
+.nav:not([data-v-9c0fee4e]) {
+  background: linear-gradient(180deg, rgba(31, 23, 16, 0.98), rgba(18, 26, 21, 0.94)) !important;
+  border-bottom: 1px solid rgba(185, 151, 88, 0.48);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), inset 0 -1px rgba(225, 199, 128, 0.05);
+  backdrop-filter: blur(12px);
+}
+
+.menu,
+.el-aside,
+.drawer-menu {
+  background:
+    linear-gradient(90deg, rgba(16, 10, 7, 0.98), rgba(38, 25, 17, 0.96)),
+    repeating-linear-gradient(0deg, transparent 0 54px, rgba(192, 143, 75, 0.05) 55px 56px) !important;
+  border-right: 1px solid rgba(185, 151, 88, 0.42) !important;
+  box-shadow: 12px 0 38px rgba(0, 0, 0, 0.32), inset -1px 0 rgba(223, 192, 122, 0.05);
+}
+
+.el-menu {
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: #c7b995;
+  --el-menu-hover-text-color: #f0ddaa;
+  --el-menu-active-color: #e2c475;
+  --el-menu-hover-bg-color: rgba(93, 121, 91, 0.2);
+  background: transparent !important;
+  border-right: 0 !important;
+}
+
+.el-menu-item,
+.el-sub-menu__title {
+  position: relative;
+  letter-spacing: 0.04em;
+  border-left: 2px solid transparent;
+  transition: color 0.22s ease, background 0.22s ease, border-color 0.22s ease !important;
+}
+
+.el-menu-item:hover,
+.el-sub-menu__title:hover {
+  border-left-color: rgba(185, 151, 88, 0.45);
+  background: linear-gradient(90deg, rgba(72, 105, 84, 0.28), transparent) !important;
+}
+
+.el-menu-item.is-active {
+  color: #f0d98f !important;
+  border-left-color: var(--study-brass-light);
+  background: linear-gradient(90deg, rgba(85, 126, 99, 0.4), rgba(78, 57, 30, 0.12)) !important;
+  text-shadow: 0 0 16px rgba(219, 192, 119, 0.24);
+}
+
+.el-card,
+.about,
+.el-dialog,
+.el-drawer,
+.el-message-box,
+.el-popover.el-popper,
+.el-popper:not(.is-light),
+.el-collapse,
+.wordtips,
+.helptips {
+  background:
+    linear-gradient(135deg, rgba(255, 244, 211, 0.025), transparent 35%),
+    var(--study-panel) !important;
+  color: var(--study-ink) !important;
+  border: 1px solid rgba(185, 151, 88, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--el-box-shadow) !important;
+  backdrop-filter: blur(12px) saturate(0.85);
+}
+
+.el-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.el-card::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  pointer-events: none;
+  border: 1px solid rgba(216, 189, 121, 0.07);
+  border-radius: 2px;
+}
+
+.el-card__header,
+.el-dialog__header,
+.el-drawer__header,
+.el-collapse-item__header {
+  color: #ead9a8 !important;
+  background: linear-gradient(90deg, rgba(83, 64, 38, 0.34), rgba(54, 78, 62, 0.16)) !important;
+  border-bottom-color: rgba(185, 151, 88, 0.28) !important;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  letter-spacing: 0.055em;
+}
+
+.el-collapse-item__header {
+  padding-left: 16px !important;
+  padding-right: 14px !important;
+}
+
+.el-collapse-item__title {
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.el-collapse-item__arrow {
+  flex: 0 0 auto;
+  margin-left: auto !important;
+}
+
+/* Custom-text entries need their own inset because the grid uses negative gutters. */
+.el-collapse-item__content > .el-row {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 8px 10px 4px;
+  box-sizing: border-box;
+}
+
+.el-collapse-item__content > .el-row > .el-col.is-guttered {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+.el-collapse-item__content .el-form-item__label {
+  padding-left: 2px !important;
+}
+
+.el-collapse-item__content .el-form-item__content > div[style*="width: 100%"] {
+  padding-left: 2px;
+  padding-right: 2px;
+  box-sizing: border-box;
+}
+
+.el-collapse-item__content .el-col-2 > .el-icon.el-tooltip__trigger {
+  margin-left: 5px;
+  color: #d8c98e;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.el-collapse-item__content .el-col-2 > .el-icon.el-tooltip__trigger:hover {
+  color: #f2d985;
+  transform: scale(1.12);
+}
+
+.el-card__body,
+.el-dialog__body,
+.el-drawer__body,
+.el-collapse-item__wrap,
+.el-collapse-item__content {
+  background: transparent !important;
+  color: var(--study-ink) !important;
+}
+
+.el-form-item__label,
+.el-radio__label,
+.el-checkbox__label,
+.el-collapse-item__content,
+.el-descriptions__content,
+.el-tree-node__label,
+.el-empty__description p {
+  color: var(--study-ink) !important;
+}
+
+.el-form-item__label,
+.el-radio__label,
+.el-checkbox__label {
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+
+.el-radio__input:not(.is-checked) .el-radio__inner,
+.el-checkbox__input:not(.is-checked) .el-checkbox__inner {
+  background: #15221b !important;
+  border-color: #7d8269 !important;
+}
+
+.el-radio__input.is-checked + .el-radio__label,
+.el-checkbox__input.is-checked + .el-checkbox__label {
+  color: #9fc3aa !important;
+}
+
+.el-button {
+  --el-button-bg-color: rgba(41, 54, 45, 0.95);
+  --el-button-border-color: #69705b;
+  --el-button-text-color: #dfd5ba;
+  --el-button-hover-bg-color: #405a49;
+  --el-button-hover-border-color: #b4975d;
+  --el-button-hover-text-color: #f2e4bd;
+  --el-button-active-bg-color: #304437;
+  --el-button-active-border-color: #d2b56f;
+  border-radius: 3px !important;
+  letter-spacing: 0.035em;
+  box-shadow: inset 0 1px rgba(255, 245, 214, 0.05), 0 3px 8px rgba(0, 0, 0, 0.18);
+}
+
+.el-button--primary {
+  --el-button-bg-color: #436451;
+  --el-button-border-color: #a38955;
+  --el-button-text-color: #f2e4bd;
+  --el-button-hover-bg-color: #547b65;
+  --el-button-hover-border-color: #d0b36e;
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner,
+.el-input-number,
+.el-date-editor {
+  background: rgba(10, 16, 13, 0.78) !important;
+  color: var(--study-ink) !important;
+  box-shadow: inset 0 0 0 1px rgba(132, 128, 96, 0.62), inset 0 3px 12px rgba(0, 0, 0, 0.2) !important;
+  border-radius: 3px !important;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover,
+.el-textarea__inner:hover {
+  box-shadow: inset 0 0 0 1px rgba(185, 151, 88, 0.85), inset 0 3px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: inset 0 0 0 1px var(--study-green-bright), 0 0 0 2px rgba(111, 155, 128, 0.13) !important;
+}
+
+.el-table {
+  --el-table-bg-color: rgba(20, 28, 23, 0.88);
+  --el-table-tr-bg-color: rgba(20, 28, 23, 0.72);
+  --el-table-header-bg-color: rgba(61, 52, 34, 0.65);
+  --el-table-row-hover-bg-color: rgba(69, 102, 82, 0.32);
+  --el-table-current-row-bg-color: rgba(69, 102, 82, 0.42);
+  --el-table-border-color: rgba(118, 113, 83, 0.42);
+  --el-table-text-color: var(--study-ink);
+  --el-table-header-text-color: #ddca95;
+  background: transparent !important;
+}
+
+.el-table-filter,
+.el-picker-panel,
+.el-color-picker__panel,
+.file-tree,
+.item-list,
+.item-list-pagination,
+.pagination,
+.wordtips,
+.helptips,
+.censor-log-container {
+  background: var(--study-panel) !important;
+  color: var(--study-ink) !important;
+}
+
+.el-divider__text {
+  background: #18211b !important;
+  color: var(--study-muted) !important;
+}
+
+.el-table th.el-table__cell {
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  letter-spacing: 0.045em;
+}
+
+/* Home-page runtime log rows use hard-coded light severity classes. */
+.logs .el-table__inner-wrapper,
+.logs .el-table__header-wrapper,
+.logs .el-table__body-wrapper,
+.logs .el-table__body,
+.logs .el-table__header,
+.logs .el-table__empty-block {
+  background: #111a15 !important;
+}
+
+.logs .el-table__header-wrapper tr,
+.logs .el-table__header-wrapper th.el-table__cell {
+  background: linear-gradient(90deg, rgba(70, 58, 35, 0.75), rgba(35, 51, 42, 0.9)) !important;
+  color: #ead49b !important;
+  border-bottom-color: rgba(185, 151, 88, 0.45) !important;
+}
+
+.logs .el-table__row.normal-row,
+.logs .el-table__row.normal-row td.el-table__cell {
+  background: rgba(20, 31, 25, 0.94) !important;
+  color: #cdd8cb !important;
+}
+
+.logs .el-table__row.warning-row,
+.logs .el-table__row.warning-row td.el-table__cell {
+  background: rgba(72, 52, 24, 0.78) !important;
+  color: #efca7f !important;
+}
+
+.logs .el-table__row.danger-row,
+.logs .el-table__row.danger-row td.el-table__cell {
+  background: rgba(72, 29, 28, 0.82) !important;
+  color: #e9a09a !important;
+}
+
+.logs .el-table__row td.el-table__cell {
+  border-bottom-color: rgba(126, 117, 83, 0.34) !important;
+}
+
+.logs .el-table__row.normal-row:nth-child(2n),
+.logs .el-table__row.normal-row:nth-child(2n) td.el-table__cell {
+  background: rgba(24, 37, 30, 0.96) !important;
+}
+
+.logs .el-table__row:hover td.el-table__cell {
+  filter: brightness(1.13);
+}
+
+.el-tabs__item {
+  color: var(--study-muted) !important;
+}
+
+.el-tabs__item.is-active,
+.el-tabs__item:hover {
+  color: var(--study-brass-light) !important;
+}
+
+.el-tabs__active-bar {
+  background-color: var(--study-brass) !important;
+  box-shadow: 0 0 10px rgba(185, 151, 88, 0.4);
+}
+
+.el-tag {
+  border-color: rgba(185, 151, 88, 0.48) !important;
+  background: rgba(65, 87, 70, 0.52) !important;
+  color: #dfd3af !important;
+}
+
+.el-switch.is-checked .el-switch__core {
+  border-color: var(--study-brass) !important;
+  background: #4f765f !important;
+}
+
+.el-pagination,
+.pagination {
+  background: transparent !important;
+}
+
+/* Group management: destructive bulk control, kept separate from per-group exit. */
+.eldritch-group-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin: -3.25rem 0 1.25rem;
+  min-height: 2.55rem;
+}
+
+.eldritch-group-toolbar-note {
+  color: #8f9c8d;
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+}
+
+.eldritch-disable-all-groups,
+.eldritch-dialog-danger,
+.eldritch-dialog-cancel {
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.eldritch-disable-all-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid rgba(156, 71, 63, 0.82);
+  background: linear-gradient(180deg, rgba(91, 38, 34, 0.78), rgba(55, 25, 23, 0.92));
+  color: #e7c0b5;
+  box-shadow: inset 0 1px rgba(255, 226, 210, 0.05), 0 5px 18px rgba(0, 0, 0, 0.24);
+}
+
+.eldritch-disable-all-groups:hover,
+.eldritch-dialog-danger:hover:not(:disabled) {
+  border-color: #c17769;
+  background: linear-gradient(180deg, rgba(121, 51, 45, 0.88), rgba(70, 29, 27, 0.96));
+  box-shadow: 0 0 0 1px rgba(185, 93, 78, 0.12), 0 6px 22px rgba(0, 0, 0, 0.32);
+  transform: translateY(-1px);
+}
+
+.eldritch-confirm-overlay {
+  position: fixed;
+  z-index: 10020;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(5, 9, 7, 0.76);
+  backdrop-filter: blur(4px);
+}
+
+.eldritch-confirm {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  width: min(30rem, calc(100vw - 2rem));
+  padding: 1.35rem;
+  border: 1px solid rgba(155, 79, 67, 0.72);
+  border-radius: 7px;
+  background:
+    linear-gradient(135deg, rgba(115, 52, 43, 0.1), transparent 44%),
+    #172019;
+  color: #ddd2b4;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58), inset 0 1px rgba(255, 243, 213, 0.04);
+}
+
+.eldritch-confirm-mark {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid #a45e52;
+  border-radius: 50%;
+  color: #e1a294;
+  font: 700 1.2rem/1 Georgia, serif;
+  box-shadow: 0 0 18px rgba(145, 57, 47, 0.2);
+}
+
+.eldritch-confirm h3 {
+  margin: 0 0 0.65rem;
+  color: #ead8b0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+}
+
+.eldritch-confirm p {
+  margin: 0.35rem 0;
+  line-height: 1.65;
+}
+
+.eldritch-confirm-safe {
+  color: #95a492;
+  font-size: 0.9rem;
+}
+
+.eldritch-confirm-error {
+  color: #e7a196 !important;
+}
+
+.eldritch-confirm footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding-top: 0.35rem;
+}
+
+.eldritch-dialog-danger,
+.eldritch-dialog-cancel {
+  padding: 0.5rem 0.9rem;
+}
+
+.eldritch-dialog-cancel {
+  border: 1px solid rgba(185, 151, 88, 0.4);
+  background: rgba(34, 47, 38, 0.92);
+  color: #cfc4a7;
+}
+
+.eldritch-dialog-cancel:hover {
+  border-color: rgba(210, 177, 110, 0.7);
+  background: rgba(48, 62, 50, 0.96);
+}
+
+.eldritch-dialog-danger {
+  border: 1px solid #a75e52;
+  background: #66342f;
+  color: #f1d2c9;
+}
+
+.eldritch-dialog-danger:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.eldritch-confirm-overlay.is-success .eldritch-confirm {
+  border-color: rgba(102, 139, 105, 0.76);
+}
+
+.eldritch-group-notice {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(105, 142, 107, 0.5);
+  border-radius: 4px;
+  background: rgba(42, 67, 49, 0.72);
+  color: #c8d6bd;
+  transition: opacity 500ms ease, transform 500ms ease;
+}
+
+.eldritch-group-notice.is-leaving {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+/* Command-test chat bubbles: replace the hard-coded white official style. */
+.talk-item > .right > .name {
+  color: #9ca99a !important;
+}
+
+.talk-item > .right > .content {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(216, 189, 121, 0.045), transparent 42%),
+    rgba(29, 42, 34, 0.96) !important;
+  color: #e2d8bc !important;
+  border: 1px solid rgba(185, 151, 88, 0.48);
+  border-radius: 5px 10px 10px 10px !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 244, 211, 0.04);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+
+.talk-item > .right > .content::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  background: #1d2a22;
+  border-left: 1px solid rgba(185, 151, 88, 0.48);
+  border-bottom: 1px solid rgba(185, 151, 88, 0.48);
+  transform: rotate(45deg);
+}
+
+.talk-item.mine > .right > .content {
+  background:
+    linear-gradient(135deg, rgba(216, 189, 121, 0.07), transparent 44%),
+    rgba(61, 74, 48, 0.96) !important;
+  color: #f0e1b7 !important;
+  border-radius: 10px 5px 10px 10px !important;
+}
+
+.talk-item.mine > .right > .content::before {
+  left: auto;
+  right: -7px;
+  background: #3d4a30;
+  border: 0;
+  border-right: 1px solid rgba(185, 151, 88, 0.48);
+  border-top: 1px solid rgba(185, 151, 88, 0.48);
+}
+
+.talk-item .el-avatar {
+  border: 1px solid rgba(185, 151, 88, 0.55);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.3);
+}
+
+.el-pager li,
+.el-pagination button {
+  background: rgba(24, 33, 27, 0.86) !important;
+  color: var(--study-muted) !important;
+}
+
+.el-pager li.is-active {
+  color: var(--study-brass-light) !important;
+  box-shadow: inset 0 -1px var(--study-brass);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: #111813 !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #39433a, #736445) !important;
+  border: 2px solid #111813;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #4d5c4e, #9a8150) !important;
+}
+
+@keyframes eldritch-breathe {
+  from { opacity: 0.65; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes eldritch-turn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes eldritch-drift {
+  0% { opacity: 0; transform: translate3d(0, 20px, 0); }
+  12% { opacity: 0.34; }
+  72% { opacity: 0.16; }
+  100% { opacity: 0; transform: translate3d(32px, -120px, 0); }
+}
+
+@media (max-width: 700px) {
+  body::before { transform: none; }
+  .main-container { padding: 0.9rem !important; }
+  .el-header {
+    min-height: 64px;
+    height: auto !important;
+    padding: 0.7rem 0.9rem !important;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+  }
+  .eldritch-sigil { width: 150px; right: -35px; bottom: 15px; }
+  .eldritch-dust i:nth-child(2n) { display: none; }
+  .eldritch-group-toolbar {
+    justify-content: flex-start;
+    margin: 0 0 1rem;
+  }
+  .eldritch-group-toolbar-note { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eldritch-glow,
+  .eldritch-sigil,
+  .eldritch-dust i { animation: none !important; }
+  body::before { transition: none; transform: none; }
+}
