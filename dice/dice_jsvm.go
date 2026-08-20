@@ -94,19 +94,82 @@ func getOfficialQQBindingLogNames(d *Dice, legacyGroupID string) map[string]inte
 		return result
 	}
 
-	var rows []struct {
-		Name string `gorm:"column:name"`
+	groupIDs := officialQQIdentityGroupCandidates(legacyGroupID)
+	// Very old or manually imported log databases may contain the bare numeric
+	// group ID even though current SealDice always stores QQ-Group:<number>.
+	if rawID := strings.TrimPrefix(legacyGroupID, "QQ-Group:"); rawID != legacyGroupID {
+		groupIDs = append(groupIDs, rawID)
 	}
-	err := logDB.
-		Table("logs").
-		Select("name").
-		Where("group_id = ?", legacyGroupID).
-		Order("updated_at DESC").
+
+	type bindingLogNameRow struct {
+		Name         string `gorm:"column:name"`
+		LastActivity int64  `gorm:"column:last_activity"`
+	}
+	var rows []bindingLogNameRow
+	err := logDB.Table("logs AS log_headers").
+		Select("log_headers.name AS name, MAX(COALESCE(log_headers.updated_at, log_headers.created_at, 0)) AS last_activity").
+		Where("log_headers.group_id IN ?", groupIDs).
+		Where("COALESCE(TRIM(log_headers.name), '') <> ''").
+		Group("log_headers.name").
+		Order("last_activity DESC").
 		Limit(50).
 		Scan(&rows).Error
 	if err != nil {
 		result["error"] = err.Error()
 		return result
+	}
+
+	// A correctly migrated log header is authoritative and uses the indexed
+	// (group_id, name) path above. Only inspect log_items when no header matched:
+	// old databases may have a stale/empty logs.group_id while their items still
+	// retain the legacy group. Avoiding LEFT JOIN + OR is essential here because
+	// it can expand the entire message table and exhaust SQLite memory.
+	if len(rows) == 0 && logDB.Migrator().HasTable("log_items") {
+		var refs []struct {
+			LogID        uint64 `gorm:"column:log_id"`
+			LastActivity int64  `gorm:"column:last_activity"`
+		}
+		err = logDB.Table("log_items").
+			Select("log_id, MAX(COALESCE(time, 0)) AS last_activity").
+			Where("group_id IN ?", groupIDs).
+			Where("log_id > 0").
+			Group("log_id").
+			Order("last_activity DESC").
+			Limit(500).
+			Scan(&refs).Error
+		if err != nil {
+			result["error"] = err.Error()
+			return result
+		}
+
+		if len(refs) > 0 {
+			logIDs := make([]uint64, 0, len(refs))
+			for _, ref := range refs {
+				logIDs = append(logIDs, ref.LogID)
+			}
+			var headers []struct {
+				ID   uint64 `gorm:"column:id"`
+				Name string `gorm:"column:name"`
+			}
+			err = logDB.Table("logs").
+				Select("id, name").
+				Where("id IN ?", logIDs).
+				Scan(&headers).Error
+			if err != nil {
+				result["error"] = err.Error()
+				return result
+			}
+
+			namesByID := make(map[uint64]string, len(headers))
+			for _, header := range headers {
+				namesByID[header.ID] = header.Name
+			}
+			for _, ref := range refs {
+				if name := namesByID[ref.LogID]; strings.TrimSpace(name) != "" {
+					rows = append(rows, bindingLogNameRow{Name: name, LastActivity: ref.LastActivity})
+				}
+			}
+		}
 	}
 
 	names := make([]string, 0, len(rows))
@@ -118,6 +181,9 @@ func getOfficialQQBindingLogNames(d *Dice, legacyGroupID string) map[string]inte
 		}
 		seen[name] = true
 		names = append(names, name)
+		if len(names) >= 50 {
+			break
+		}
 	}
 	result["ok"] = true
 	result["names"] = names
@@ -602,6 +668,10 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("replyGroup", ReplyGroup)
 		_ = seal.Set("replyPerson", ReplyPerson)
 		_ = seal.Set("replyToSender", ReplyToSender)
+		_ = seal.Set("replyToSenderMarkdown", ReplyToSenderMarkdown)
+		_ = seal.Set("replyToSenderWithKeyboard", ReplyToSenderWithKeyboard)
+		_ = seal.Set("replyGroupWithKeyboard", ReplyGroupWithKeyboard)
+		_ = seal.Set("replyPersonWithKeyboard", ReplyPersonWithKeyboard)
 		_ = seal.Set("replyToSenderBypassIntercept", ReplyToSenderBypassIntercept)
 		_ = seal.Set("memberBan", MemberBan)
 		_ = seal.Set("memberKick", MemberKick)
@@ -616,6 +686,7 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("createTempCtx", CreateTempCtx)
 		_ = seal.Set("registerOfficialQQIdentityAlias", RegisterOfficialQQIdentityAlias)
 		_ = seal.Set("removeOfficialQQIdentityAlias", RemoveOfficialQQIdentityAlias)
+		_ = seal.Set("resolveOfficialQQIdentityAlias", ResolveOfficialQQIdentityAlias)
 		_ = seal.Set("inheritOfficialQQCharacterBinding", func(groupID string, officialUserID string) map[string]interface{} {
 			result := map[string]interface{}{
 				"ok":        false,

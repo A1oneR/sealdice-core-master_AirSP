@@ -177,14 +177,16 @@ type PaginationItem struct {
 	CreatedAt   time.Time
 	CurrentPage int
 	SessionKey  string
+	UseMarkdown bool
 }
 
 type officialQQPaginationAdvance struct {
-	CacheID    string
-	Text       string
-	PageIndex  int
-	TotalPages int
-	Notice     string
+	CacheID     string
+	Text        string
+	PageIndex   int
+	TotalPages  int
+	Notice      string
+	UseMarkdown bool
 }
 
 // splitOfficialQQPaginationText keeps rich-media pages small enough for the
@@ -878,7 +880,8 @@ func (pa *PlatformAdapterOfficialQQ) InteractionReceive(eventRaw *dto.WSPayload,
 		toCreate.EventID = data.ID
 	}
 
-	if pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown {
+	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown || item.UseMarkdown
+	if useMarkdown {
 		toCreate.MsgType = 2
 		toCreate.Markdown = &dto.Markdown{
 			Content: text,
@@ -899,13 +902,13 @@ func (pa *PlatformAdapterOfficialQQ) InteractionReceive(eventRaw *dto.WSPayload,
 	VarSetValueStr(ctx, "$tEventID", toCreate.EventID)
 	postGroupPage := func(groupOpenID string) (*dto.Message, error) {
 		if officialQQPageHasImage(text) {
-			return pa.sendQQGroupMsgRaw(ctx, "", groupOpenID, text, keyboardObj)
+			return pa.sendQQGroupMsgRaw(ctx, "", groupOpenID, text, keyboardObj, useMarkdown)
 		}
 		return pa.Api.PostGroupMessage(qctx, groupOpenID, toCreate)
 	}
 	postC2CPage := func(userOpenID string) (*dto.Message, error) {
 		if officialQQPageHasImage(text) {
-			return pa.sendC2CMsgRaw(ctx, "", userOpenID, text, keyboardObj)
+			return pa.sendC2CMsgRaw(ctx, "", userOpenID, text, keyboardObj, useMarkdown)
 		}
 		return pa.Api.PostC2CMessage(qctx, userOpenID, toCreate)
 	}
@@ -1251,13 +1254,13 @@ func (pa *PlatformAdapterOfficialQQ) tryHandleManualPagination(msg *Message) boo
 		if idType != OpenQQGroupOpenid {
 			return false
 		}
-		_, err = pa.sendQQGroupMsgRaw(nil, fmt.Sprintf("%v", msg.RawID), groupOpenID, text, keyboardObj)
+		_, err = pa.sendQQGroupMsgRaw(nil, fmt.Sprintf("%v", msg.RawID), groupOpenID, text, keyboardObj, page.UseMarkdown)
 	case "private":
 		userOpenID, idType := pa.mustExtractID(msg.Sender.UserID)
 		if idType != OpenQQUserOpenid {
 			return false
 		}
-		_, err = pa.sendC2CMsgRaw(nil, fmt.Sprintf("%v", msg.RawID), userOpenID, text, keyboardObj)
+		_, err = pa.sendC2CMsgRaw(nil, fmt.Sprintf("%v", msg.RawID), userOpenID, text, keyboardObj, page.UseMarkdown)
 	default:
 		return false
 	}
@@ -1475,7 +1478,7 @@ func (pa *PlatformAdapterOfficialQQ) initPaginationCache() {
 	}
 }
 
-func (pa *PlatformAdapterOfficialQQ) addToPaginationCache(id string, pages []string, sessionKey string) {
+func (pa *PlatformAdapterOfficialQQ) addToPaginationCache(id string, pages []string, sessionKey string, useMarkdown bool) {
 	pa.initPaginationCache()
 	pa.paginationMu.Lock()
 	defer pa.paginationMu.Unlock()
@@ -1497,6 +1500,7 @@ func (pa *PlatformAdapterOfficialQQ) addToPaginationCache(id string, pages []str
 		CreatedAt:   now,
 		CurrentPage: 0,
 		SessionKey:  sessionKey,
+		UseMarkdown: useMarkdown,
 	}
 	if sessionKey != "" {
 		pa.paginationSessions[sessionKey] = id
@@ -1527,18 +1531,19 @@ func (pa *PlatformAdapterOfficialQQ) advanceManualPagination(sessionKey string, 
 
 	nextPage := item.CurrentPage + direction
 	if nextPage < 0 {
-		return &officialQQPaginationAdvance{Notice: "当前已经是第一页，请发送“下一页”继续查看。"}, true
+		return &officialQQPaginationAdvance{Notice: "当前已经是第一页，请发送“下一页”继续查看。", UseMarkdown: item.UseMarkdown}, true
 	}
 	if nextPage >= len(item.Pages) {
-		return &officialQQPaginationAdvance{Notice: "当前已经是最后一页，请发送“上一页”返回查看。"}, true
+		return &officialQQPaginationAdvance{Notice: "当前已经是最后一页，请发送“上一页”返回查看。", UseMarkdown: item.UseMarkdown}, true
 	}
 
 	item.CurrentPage = nextPage
 	return &officialQQPaginationAdvance{
-		CacheID:    cacheID,
-		Text:       item.Pages[nextPage],
-		PageIndex:  nextPage,
-		TotalPages: len(item.Pages),
+		CacheID:     cacheID,
+		Text:        item.Pages[nextPage],
+		PageIndex:   nextPage,
+		TotalPages:  len(item.Pages),
+		UseMarkdown: item.UseMarkdown,
 	}, true
 }
 
@@ -1673,6 +1678,67 @@ func (pa *PlatformAdapterOfficialQQ) SendSegmentToGroup(ctx *MsgContext, groupID
 func (pa *PlatformAdapterOfficialQQ) SendSegmentToPerson(ctx *MsgContext, userID string, msg []message.IMessageElement, flag string) {
 }
 
+// officialQQKeyboardFromMap keeps the JS-facing keyboard API independent of
+// botgo's Go structs while still validating the official JSON shape.
+func officialQQKeyboardFromMap(raw map[string]interface{}) *keyboard.MessageKeyboard {
+	if raw == nil {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var result keyboard.MessageKeyboard
+	if err := json.Unmarshal(b, &result); err != nil || (result.Content == nil && result.ID == "") {
+		return nil
+	}
+	return &result
+}
+
+// SendToPersonWithKeyboard and SendToGroupWithKeyboard implement the optional
+// native-keyboard capability exposed to JS as seal.replyToSenderWithKeyboard.
+// Other adapters do not implement this interface and keep the ordinary text
+// and CQ-code reply path unchanged.
+func (pa *PlatformAdapterOfficialQQ) SendToPersonWithKeyboard(ctx *MsgContext, uid string, text string, raw map[string]interface{}, flag string) {
+	userID, idType := pa.mustExtractID(uid)
+	keyboardObj := officialQQKeyboardFromMap(raw)
+	if keyboardObj == nil || idType != OpenQQUserOpenid {
+		pa.SendToPerson(ctx, uid, text, flag)
+		return
+	}
+	rowID := ""
+	if ctx != nil {
+		rowID, _ = VarGetValueStr(ctx, "$tMsgID")
+		if rowID == "" {
+			rowID, _ = VarGetValueStr(ctx, "$tEventID")
+		}
+	}
+	msg, err := pa.sendC2CMsgRaw(ctx, rowID, userID, text, keyboardObj, flag == replyFlagOfficialQQMarkdown)
+	if err == nil && msg != nil && ctx != nil {
+		pa.EndPoint.Session.OnMessageSend(ctx, &Message{Platform: "QQ", MessageType: "private", Message: text, Sender: SenderBase{UserID: pa.EndPoint.UserID, Nickname: pa.EndPoint.Nickname}, RawID: msg.ID}, flag)
+	}
+}
+
+func (pa *PlatformAdapterOfficialQQ) SendToGroupWithKeyboard(ctx *MsgContext, uid string, text string, raw map[string]interface{}, flag string) {
+	groupID, idType := pa.mustExtractID(uid)
+	keyboardObj := officialQQKeyboardFromMap(raw)
+	if keyboardObj == nil || idType != OpenQQGroupOpenid {
+		pa.SendToGroup(ctx, uid, text, flag)
+		return
+	}
+	rowID := ""
+	if ctx != nil {
+		rowID, _ = VarGetValueStr(ctx, "$tMsgID")
+		if rowID == "" {
+			rowID, _ = VarGetValueStr(ctx, "$tEventID")
+		}
+	}
+	msg, err := pa.sendQQGroupMsgRaw(ctx, rowID, groupID, text, keyboardObj, flag == replyFlagOfficialQQMarkdown)
+	if err == nil && msg != nil && ctx != nil {
+		pa.EndPoint.Session.OnMessageSend(ctx, &Message{Platform: "QQ", MessageType: "group", Message: text, GroupID: uid, Sender: SenderBase{UserID: pa.EndPoint.UserID, Nickname: pa.EndPoint.Nickname}, RawID: msg.ID}, flag)
+	}
+}
+
 func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, text string, flag string) {
 	userID, idType := pa.mustExtractID(uid)
 
@@ -1684,7 +1750,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 			maxLen = 2800
 		}
 	}
-	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown
+	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown || flag == replyFlagOfficialQQMarkdown
 	textList, usePagination := prepareOfficialQQPaginationText(text, maxLen, useMarkdown)
 
 	var activeCtx *MsgContext = nil
@@ -1702,7 +1768,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 	if usePagination {
 		cacheID := generateCacheID()
 		sessionKey := officialQQPaginationSessionKey("private", "", uid)
-		pa.addToPaginationCache(cacheID, textList, sessionKey)
+		pa.addToPaginationCache(cacheID, textList, sessionKey, useMarkdown)
 
 		firstPage, keyboardObj := pa.presentPaginationPage(cacheID, 0, textList)
 		if idType != OpenQQUserOpenid {
@@ -1711,7 +1777,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 		}
 
 		if idType == OpenQQUserOpenid {
-			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, firstPage, keyboardObj)
+			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, firstPage, keyboardObj, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -1751,7 +1817,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 			guildID = g
 			channelID = c
 		}
-		msg, err := pa.sendQQGuildDirectMsgRaw(ctx, rowID, guildID, channelID, textList[0], keyboardObj)
+		msg, err := pa.sendQQGuildDirectMsgRaw(ctx, rowID, guildID, channelID, textList[0], keyboardObj, useMarkdown)
 		if err == nil && msg != nil {
 			pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 				Platform:    "QQ",
@@ -1769,7 +1835,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 
 	for _, t := range textList {
 		if idType == OpenQQUserOpenid {
-			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, t, nil)
+			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, t, nil, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -1810,7 +1876,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 			guildID = g
 			channelID = c
 		}
-		msg, err := pa.sendQQGuildDirectMsgRaw(ctx, rowID, guildID, channelID, t, nil)
+		msg, err := pa.sendQQGuildDirectMsgRaw(ctx, rowID, guildID, channelID, t, nil, useMarkdown)
 		if err == nil && msg != nil {
 			pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 				Platform:    "QQ",
@@ -1861,12 +1927,12 @@ func (pa *PlatformAdapterOfficialQQ) initMessageToCreate(ctx *MsgContext, rowMsg
 	return toCreate
 }
 
-func (pa *PlatformAdapterOfficialQQ) finalizeMessageToCreate(toCreate *dto.MessageToCreate, content string, keyboardObj *keyboard.MessageKeyboard, isFinal bool) {
+func (pa *PlatformAdapterOfficialQQ) finalizeMessageToCreate(toCreate *dto.MessageToCreate, content string, keyboardObj *keyboard.MessageKeyboard, isFinal bool, forceMarkdown bool) {
 	if toCreate.Media == nil && content == "" && toCreate.MessageReference == nil {
 		return
 	}
 
-	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown
+	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown || forceMarkdown
 	if useMarkdown && toCreate.MsgType != 7 {
 		toCreate.MsgType = 2
 		toCreate.Markdown = &dto.Markdown{
@@ -1884,7 +1950,23 @@ func (pa *PlatformAdapterOfficialQQ) finalizeMessageToCreate(toCreate *dto.Messa
 }
 
 func officialQQPaginationControlText() string {
-	return "图片分页"
+	return "📖 图片已发送，请点击下方按钮翻页；也可发送“上一页/下一页”"
+}
+
+func officialQQPaginationHint(content string) (string, string) {
+	const prefix = "[[YAN_PAGINATION:"
+	start := strings.Index(content, prefix)
+	if start < 0 {
+		return content, ""
+	}
+	rest := content[start+len(prefix):]
+	end := strings.Index(rest, "]]")
+	if end < 0 {
+		return content, ""
+	}
+	hint := strings.TrimSpace(rest[:end])
+	content = content[:start] + rest[end+2:]
+	return content, hint
 }
 
 func splitOfficialQQRichMediaPagination(
@@ -1895,7 +1977,11 @@ func splitOfficialQQRichMediaPagination(
 	if toCreate == nil || toCreate.Media == nil || keyboardObj == nil {
 		return content, "", false
 	}
+	content, customHint := officialQQPaginationHint(content)
 	controlContent := officialQQPaginationControlText()
+	if customHint != "" {
+		controlContent = customHint
+	}
 	if textContent := strings.TrimSpace(content); textContent != "" {
 		controlContent = textContent + "\n" + controlContent
 	}
@@ -1914,7 +2000,7 @@ func (pa *PlatformAdapterOfficialQQ) prepareMediaMessage(file *message.FileEleme
 	return url, nil, nil
 }
 
-func (pa *PlatformAdapterOfficialQQ) sendQQGuildDirectMsgRaw( /* ctx */ _ *MsgContext, rowMsgID string, guildID, channelID string, text string, keyboardObj *keyboard.MessageKeyboard) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendQQGuildDirectMsgRaw( /* ctx */ _ *MsgContext, rowMsgID string, guildID, channelID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -1941,7 +2027,7 @@ func (pa *PlatformAdapterOfficialQQ) sendQQGuildDirectMsgRaw( /* ctx */ _ *MsgCo
 	}
 	toCreate := pa.initMessageToCreate(nil, rowMsgID)
 	toCreate.MessageReference = msgRef
-	pa.finalizeMessageToCreate(toCreate, content, keyboardObj, true)
+	pa.finalizeMessageToCreate(toCreate, content, keyboardObj, true, forceMarkdown)
 
 	res, err := pa.Api.PostDirectMessage(qctx, dMsg, toCreate)
 	if err != nil {
@@ -2011,7 +2097,7 @@ func (pa *PlatformAdapterOfficialQQ) uploadGroupMedia(qctx context.Context, grou
 }
 
 // sendC2CMsgRaw 发送单聊消息（使用msg_id被动回复）
-func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, userOpenID string, text string, keyboardObj *keyboard.MessageKeyboard) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, userOpenID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -2025,7 +2111,7 @@ func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, us
 	var lastErr error
 
 	sendCurrent := func(isFinal bool) {
-		pa.finalizeMessageToCreate(toCreate, content, keyboardObj, isFinal)
+		pa.finalizeMessageToCreate(toCreate, content, keyboardObj, isFinal, forceMarkdown)
 		if toCreate.Media == nil && toCreate.Content == "" && toCreate.Markdown == nil && toCreate.MessageReference == nil {
 			return
 		}
@@ -2076,6 +2162,22 @@ func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, us
 			media, err := pa.uploadC2CMedia(qctx, userOpenID, e.File, 3)
 			if err != nil {
 				pa.EndPoint.Session.Parent.Logger.Error("official qq 发送单聊消息时，准备语音信息失败：" + err.Error())
+				continue
+			}
+
+			if toCreate.Media != nil {
+				sendCurrent(false)
+				content = ""
+				toCreate = pa.initMessageToCreate(ctx, rowMsgID)
+				toCreate.MessageReference = msgRef
+			}
+
+			toCreate.MsgType = 7
+			toCreate.Media = media
+		case *message.FileElement:
+			media, err := pa.uploadC2CMedia(qctx, userOpenID, e, 4)
+			if err != nil {
+				pa.EndPoint.Session.Parent.Logger.Error("official qq 发送单聊消息时，准备文件信息失败：" + err.Error())
 				continue
 			}
 
@@ -2252,7 +2354,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 			maxLen = 2800
 		}
 	}
-	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown
+	useMarkdown := pa.EndPoint.Session.Parent.Config.OfficialQQUseMarkdown || flag == replyFlagOfficialQQMarkdown
 	textList, usePagination := prepareOfficialQQPaginationText(text, maxLen, useMarkdown)
 
 	var activeCtx *MsgContext = nil
@@ -2274,7 +2376,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 			ownerID = ctx.Player.UserID
 		}
 		sessionKey := officialQQPaginationSessionKey("group", uid, ownerID)
-		pa.addToPaginationCache(cacheID, textList, sessionKey)
+		pa.addToPaginationCache(cacheID, textList, sessionKey, useMarkdown)
 
 		firstPage, keyboardObj := pa.presentPaginationPage(cacheID, 0, textList)
 		if idType != OpenQQGroupOpenid {
@@ -2284,7 +2386,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 
 		switch idType {
 		case OpenQQGroupOpenid:
-			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj)
+			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2299,7 +2401,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 				}, flag)
 			}
 		case OpenQQCHChannel:
-			msg, err := pa.sendQQChannelMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj)
+			msg, err := pa.sendQQChannelMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2322,7 +2424,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 	for _, t := range textList {
 		switch idType {
 		case OpenQQGroupOpenid:
-			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, t, nil)
+			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, t, nil, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2337,7 +2439,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 				}, flag)
 			}
 		case OpenQQCHChannel:
-			msg, err := pa.sendQQChannelMsgRaw(activeCtx, activeRowID, groupId, t, nil)
+			msg, err := pa.sendQQChannelMsgRaw(activeCtx, activeRowID, groupId, t, nil, useMarkdown)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2358,7 +2460,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 	}
 }
 
-func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID, groupID string, text string, keyboardObj *keyboard.MessageKeyboard) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID, groupID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -2372,7 +2474,7 @@ func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID
 	var lastErr error
 
 	sendCurrent := func(isFinal bool) {
-		pa.finalizeMessageToCreate(toCreate, content, keyboardObj, isFinal)
+		pa.finalizeMessageToCreate(toCreate, content, keyboardObj, isFinal, forceMarkdown)
 		if toCreate.Media == nil && toCreate.Content == "" && toCreate.Markdown == nil && toCreate.MessageReference == nil {
 			return
 		}
@@ -2440,6 +2542,22 @@ func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID
 
 			toCreate.MsgType = 7
 			toCreate.Media = media
+		case *message.FileElement:
+			media, err := pa.uploadGroupMedia(qctx, groupID, elem, 4)
+			if err != nil {
+				pa.EndPoint.Session.Parent.Logger.Error("official qq 发送群聊消息时，准备文件信息失败：" + err.Error())
+				continue
+			}
+
+			if toCreate.Media != nil {
+				sendCurrent(false)
+				content = ""
+				toCreate = pa.initMessageToCreate(ctx, rowMsgID)
+				toCreate.MessageReference = msgRef
+			}
+
+			toCreate.MsgType = 7
+			toCreate.Media = media
 		}
 	}
 
@@ -2453,7 +2571,7 @@ func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID
 	return lastRes, lastErr
 }
 
-func (pa *PlatformAdapterOfficialQQ) sendQQChannelMsgRaw( /* ctx */ _ *MsgContext, rowMsgID, channelID string, text string, keyboardObj *keyboard.MessageKeyboard) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendQQChannelMsgRaw( /* ctx */ _ *MsgContext, rowMsgID, channelID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -2484,7 +2602,7 @@ func (pa *PlatformAdapterOfficialQQ) sendQQChannelMsgRaw( /* ctx */ _ *MsgContex
 
 	toCreate := pa.initMessageToCreate(nil, rowMsgID)
 	toCreate.MessageReference = msgRef
-	pa.finalizeMessageToCreate(toCreate, content, keyboardObj, true)
+	pa.finalizeMessageToCreate(toCreate, content, keyboardObj, true, forceMarkdown)
 
 	res, err := pa.Api.PostMessage(qctx, channelID, toCreate)
 	if err != nil {

@@ -174,7 +174,17 @@ func newCocCardCommand(name string, shortHelp string, help string, spec cocCardS
 
 			cards := generateCocCards(ctx, count, spec)
 			separator := DiceFormatTmpl(ctx, "COC:制卡_分隔符")
-			VarSetValueStr(ctx, "$t制卡结果文本", strings.Join(cards, separator))
+			resultText := strings.Join(cards, separator)
+			VarSetValueStr(ctx, "$t制卡结果文本", resultText)
+			// 兼容旧版内置/自定义文案：旧版 .cohero 和 .coran 分别使用
+			// $t制卡结果文本2 / $t制卡结果文本3。未定义的临时变量在 RollVM
+			// 中会回落为整数 0，导致旧文案只显示“0”。
+			switch name {
+			case "cohero":
+				VarSetValueStr(ctx, "$t制卡结果文本2", resultText)
+			case "coran":
+				VarSetValueStr(ctx, "$t制卡结果文本3", resultText)
+			}
 			text := DiceFormatTmpl(ctx, outputTemplate)
 			if ctx.Dice.Config.CocCardMergeForward {
 				title := DiceFormatTmpl(ctx, titleTemplate)

@@ -25888,6 +25888,9 @@ dimensions = 1024                   # 可选，输出向量维度，须与后端
       seal.ext.registerIntConfig(ext, "工具响应压缩触发字数", 5e3, "工具返回结果超过该字数时压缩后再存入上下文；设为 0 不压缩", "工具");
       seal.ext.registerTemplateConfig(ext, "禁止调用的函数", [""], "每行一个禁止 AI 调用的函数名，示例：draw_deck；修改后自动生效", "工具");
       seal.ext.registerTemplateConfig(ext, "默认关闭的函数", [""], "每行一个默认关闭的函数名，AI 默认无法调用，示例：get_msg；修改后自动生效", "工具");
+      seal.ext.registerBoolConfig(ext, "启用高级图片识别", false, "开启后注册 advanced_image_to_text 工具。该工具绕过普通图片识别流程，直接把图片交给指定的原生图片模型；默认关闭以避免增加模型调用和费用", "工具");
+      seal.ext.registerStringConfig(ext, "高级图片识别模型", "", "高级识图使用的图片模型名称；留空使用第一个支持 image-understanding 的图片模型", "工具");
+      seal.ext.registerStringConfig(ext, "高级图片识别提示词", "请高精度分析这张图片。优先识别图片中的文字、表格、角色卡字段、界面报错和细节；无法确定的内容请明确标注，不要猜测。", "高级识图的默认提示词，可被工具调用时的 prompt 覆盖", "工具");
       seal.ext.registerTemplateConfig(ext, "可调用指令白名单", ["fun|jrrp", "story|modu", "coc7|st", "coc7|ra", "coc7|sc"], "每行一个 AI 可调用的海豹指令；格式：扩展名|指令名（指令与插件同名时可只写指令名）。示例：wifeOfTheDay|今日老婆、fun|jrrp、coc7|st。默认包含内置技能所需指令，可自行增删。修改后自动生效", "工具");
       seal.ext.registerBoolConfig(ext, "是否允许调用所有指令", false, "开启后忽略白名单，允许调用所有可解析的指令；默认关闭，建议保持关闭以限制权限", "工具");
       seal.ext.registerTemplateConfig(ext, "内置扩展列表", ["fun", "story", "coc7", "deck", "dnd5e", "exp", "log", "reply"], "每行一个 SealDice 核心内置扩展名，用于「允许所有指令」模式下枚举其指令；可自行增删。修改后自动生效", "工具");
@@ -25992,6 +25995,9 @@ description: 对指定玩家进行 san check（sc）
         TOOL_RESPONSE_COMPRESS_MIN_LENGTH: seal.ext.getIntConfig(ext, "工具响应压缩触发字数"),
         BLOCKED: seal.ext.getTemplateConfig(ext, "禁止调用的函数"),
         DEFAULT_CLOSED: seal.ext.getTemplateConfig(ext, "默认关闭的函数"),
+        ADVANCED_IMAGE_RECOGNITION_ENABLED: seal.ext.getBoolConfig(ext, "启用高级图片识别"),
+        ADVANCED_IMAGE_MODEL: seal.ext.getStringConfig(ext, "高级图片识别模型").trim(),
+        ADVANCED_IMAGE_PROMPT: seal.ext.getStringConfig(ext, "高级图片识别提示词"),
         CMD_WHITELIST: seal.ext.getTemplateConfig(ext, "可调用指令白名单"),
         ALLOW_ALL_CMDS: seal.ext.getBoolConfig(ext, "是否允许调用所有指令"),
         BUILTIN_EXT_NAMES: seal.ext.getTemplateConfig(ext, "内置扩展列表"),
@@ -28727,6 +28733,27 @@ ${lastTimePrompt}
   }
 
   // src/tool/tools/image/tool_image.ts
+  function getAdvancedImageModel() {
+    const configuredName = config_default.tool.ADVANCED_IMAGE_MODEL;
+    if (!configuredName) return Model.getImageModel("image-understanding");
+    return Model.imageModels.find((model) => model.name === configuredName && (model.use.includes("image-understanding") || model.use.length === 0)) || null;
+  }
+  async function resolveAdvancedImageSource(ctx, session, raw) {
+    let input = String(raw || "").trim();
+    if (!input) return { source: "", image: null, error: "图片参数不能为空" };
+    const tagMatch = input.match(/^[[［]img[:：]\s?([^\]］]+)[\]］]$/i);
+    if (tagMatch) input = tagMatch[1].trim();
+    if (/^data:image\//i.test(input)) return { source: input, image: null, error: "" };
+    if (/^https?:\/\//i.test(input)) return { source: normalizeRemoteImageUrl(input), image: null, error: "" };
+    const compact2 = input.replace(/\s+/g, "");
+    if (compact2.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(compact2)) {
+      return { source: `data:image/png;base64,${compact2}`, image: null, error: "" };
+    }
+    const image = await session.context.findImage(ctx, input) || (input.includes(":") ? await session.context.findImage(ctx, input.split(":")[0]) : null);
+    if (!image) return { source: "", image: null, error: `未找到图片${input}` };
+    if (image.type === "local") return { source: "", image, error: "本地图片暂时无法由高级模式直接识别" };
+    return { source: image.src, image, error: "" };
+  }
   function registerImage() {
     const toolITT = new Tool({
       type: "function",
@@ -28757,6 +28784,52 @@ ${lastTimePrompt}
       if (image.type === "local") return "本地图片暂时无法识别";
       await image.imageToText(text);
       return image.description || "图片识别失败";
+    };
+    const toolAdvancedITT = new Tool({
+      type: "function",
+      function: {
+        name: "advanced_image_to_text",
+        description: "高级原生图片识别。绕过普通识图缓存与摘要流程，直接把图片交给单独配置的图片模型；适用于官方Bot临时图片地址、OCR、角色卡、表格、界面报错和普通识图失败后的重试",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "图片id、[img:图片id]、http(s)图片URL、data:image/...;base64或纯base64数据"
+            },
+            prompt: {
+              type: "string",
+              description: "本次高级识图要求；留空时使用工具配置中的高级图片识别提示词"
+            }
+          },
+          required: ["id"]
+        }
+      }
+    });
+    toolAdvancedITT.solve = async (ctx, _2, session, args) => {
+      if (!config_default.tool.ADVANCED_IMAGE_RECOGNITION_ENABLED) return "高级图片识别未启用，请先在「工具 → 启用高级图片识别」中开启";
+      if (!config_default.model.IMAGE_MODEL_ENABLED) return "图片模型开关未开启，请先在「模型 → 是否开启图片模型」中开启";
+      const model = getAdvancedImageModel();
+      if (!model) {
+        const configuredName = config_default.tool.ADVANCED_IMAGE_MODEL;
+        return configuredName ? `未找到高级图片识别模型「${configuredName}」` : "未找到支持 image-understanding 的图片模型";
+      }
+      const resolved = await resolveAdvancedImageSource(ctx, session, args.id);
+      if (resolved.error) return resolved.error;
+      const prompt = String(args.prompt || config_default.tool.ADVANCED_IMAGE_PROMPT || "请详细识别这张图片中的内容").trim();
+      let result = await model.callITT(resolved.source, prompt);
+      if (!result && resolved.image && resolved.image.type === "url") {
+        logger.info(`高级识图直接读取URL失败，尝试转为base64: ${resolved.image.imageId}`);
+        await resolved.image.urlToBase64();
+        if (resolved.image.base64) result = await model.callITT(resolved.image.base64Url, prompt);
+      }
+      if (!result) return "高级图片识别失败：图片地址可能已过期，或所选模型不支持该图片格式";
+      if (resolved.image) {
+        resolved.image.description = result;
+        Image.imageMap[resolved.image.imageId] = resolved.image;
+        Image.save(resolved.image);
+      }
+      return result;
     };
     const toolTTI = new Tool({
       type: "function",
@@ -28799,23 +28872,32 @@ ${lastTimePrompt}
         if (globalThis.tti && typeof globalThis.tti.generate === "function") {
           const result = await globalThis.tti.generate({ text: prompt, negativeText: negative_prompt });
           if (!result.success) throw new Error(result.error || "图像生成失败");
+          const generatedData = String(result.data || "");
+          if (!generatedData) throw new Error("生成图片数据为空");
           const img = new Image();
           img.imageId = `${name}_${generateId()}`;
-          if (result.data.startsWith("http://") || result.data.startsWith("https://")) {
-            img.url = result.data;
+          if (generatedData.startsWith("http://") || generatedData.startsWith("https://")) {
+            img.url = normalizeRemoteImageUrl(generatedData);
             try {
               await img.urlToBase64();
             } catch (e) {
               logger.error(`将图片URL转换为base64失败: ${e}`);
             }
           } else {
-            img.base64 = /^data:/i.test(result.data) && result.data.includes(",") ? result.data.slice(result.data.indexOf(",") + 1) : result.data;
+            const dataUrlMatch = generatedData.match(/^data:image\/([^;,]+);base64,(.+)$/i);
+            if (dataUrlMatch) {
+              img.format = dataUrlMatch[1].toLowerCase();
+              img.base64 = dataUrlMatch[2];
+            } else {
+              img.base64 = generatedData;
+            }
           }
           img.format = img.format || "unknown";
           img.description = `AI绘图[img:${img.imageId}]
 ${prompt ? `描述: ${prompt}` : ""}
 ${negative_prompt ? `不希望出现: ${negative_prompt}` : ""}`;
-          if (save) session.memory.addMemory(ctx, session, [], [], kws, [img], img.description);
+          Image.imageMap[img.imageId] = img;
+          if (save) await session.memory.addMemory(ctx, session, [], [], kws, [img], img.description);
           return `生成成功，请使用[img:${img.imageId}]发送`;
         }
         if (globalThis.aiDrawing && typeof globalThis.aiDrawing.generateImage === "function") {

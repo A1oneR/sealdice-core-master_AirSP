@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"sealdice-core/dice/service"
 	sealdiceLogger "sealdice-core/logger"
 	"sealdice-core/model"
 	"sealdice-core/utils/constant"
@@ -246,5 +248,135 @@ func TestEnsureGroupLogStateBackfillsLegacyLogID(t *testing.T) {
 	}
 	if got := ctx.Group.GetLogState().ID; got != logState.ID {
 		t.Fatalf("group LogCurID = %d, want %d", got, logState.ID)
+	}
+}
+
+func TestBuildLogNameAliasIndexUsesBoundOfficialQQGroup(t *testing.T) {
+	mockDB := newLogAliasTestDB(t)
+	officialGroupID := "OpenQQ-Group:synthetic-log-list"
+	legacyGroupID := "QQ-Group:810001"
+	logName := "legacy-campaign"
+
+	if !service.LogAppend(mockDB, legacyGroupID, logName, &model.LogOneItem{Message: "old line"}) {
+		t.Fatal("failed to seed legacy log")
+	}
+	if !RegisterOfficialQQIdentityAlias(officialGroupID, legacyGroupID) {
+		t.Fatal("failed to register synthetic group alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialGroupID) })
+
+	index, err := buildLogNameAliasIndex(mockDB, officialGroupID)
+	if err != nil {
+		t.Fatalf("buildLogNameAliasIndex: %v", err)
+	}
+	if len(index.entries) != 1 || index.entries[0].Name != logName {
+		t.Fatalf("entries = %#v, want legacy log %q", index.entries, logName)
+	}
+}
+
+func TestBoundOfficialQQGroupUsesLegacyLogForNativeOperations(t *testing.T) {
+	mockDB := newLogAliasTestDB(t)
+	officialGroupID := "OpenQQ-Group:synthetic-log-operations"
+	legacyGroupID := "QQ-Group:810002"
+	logName := "continued-campaign"
+	rawMsgID := "synthetic-message-id"
+
+	logID, err := service.LogGetOrCreate(mockDB, legacyGroupID, logName)
+	if err != nil {
+		t.Fatalf("seed legacy log: %v", err)
+	}
+	if !RegisterOfficialQQIdentityAlias(officialGroupID, legacyGroupID) {
+		t.Fatal("failed to register synthetic group alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialGroupID) })
+
+	ctx := &MsgContext{Dice: &Dice{DBOperator: mockDB, Logger: sealdiceLogger.M()}}
+	if !LogAppend(ctx, officialGroupID, logID, logName, &model.LogOneItem{
+		Message:  "continued line",
+		RawMsgID: rawMsgID,
+	}) {
+		t.Fatal("LogAppend through official group failed")
+	}
+
+	lines, err := service.LogGetAllLines(mockDB, legacyGroupID, logName)
+	if err != nil || len(lines) != 1 {
+		t.Fatalf("legacy lines after append = %d, err = %v", len(lines), err)
+	}
+	var storedGroupID string
+	if err := mockDB.GetLogDB(constant.READ).Model(&model.LogOneItem{}).
+		Where("log_id = ?", logID).
+		Pluck("group_id", &storedGroupID).Error; err != nil {
+		t.Fatalf("read appended item group: %v", err)
+	}
+	if storedGroupID != legacyGroupID {
+		t.Fatalf("appended item group = %q, want legacy storage group", storedGroupID)
+	}
+	if names, err := service.LogGetList(mockDB, officialGroupID); err != nil || len(names) != 0 {
+		t.Fatalf("official storage unexpectedly contains logs: %v, err = %v", names, err)
+	}
+
+	logFile, _, err := GetLogTxt(ctx, officialGroupID, logName, "bound-log-test")
+	if err != nil {
+		t.Fatalf("GetLogTxt through official group: %v", err)
+	}
+	defer os.Remove(logFile)
+	content, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read exported log: %v", err)
+	}
+	if !strings.Contains(string(content), "continued line") {
+		t.Fatalf("export does not contain legacy log line: %q", content)
+	}
+
+	if !LogEditByID(ctx, officialGroupID, "edited line", rawMsgID) {
+		t.Fatal("LogEditByID through official group failed")
+	}
+	lines, err = service.LogGetAllLines(mockDB, legacyGroupID, logName)
+	if err != nil || len(lines) != 1 || lines[0].Message != "edited line" {
+		t.Fatalf("legacy line after edit = %#v, err = %v", lines, err)
+	}
+
+	if !LogDeleteByID(ctx, officialGroupID, rawMsgID) {
+		t.Fatal("LogDeleteByID through official group failed")
+	}
+	lines, err = service.LogGetAllLines(mockDB, legacyGroupID, logName)
+	if err != nil || len(lines) != 0 {
+		t.Fatalf("legacy lines after delete = %d, err = %v", len(lines), err)
+	}
+}
+
+func TestEnsureGroupLogStateRebindsPreexistingOfficialLogID(t *testing.T) {
+	mockDB := newLogAliasTestDB(t)
+	officialGroupID := "OpenQQ-Group:synthetic-log-state"
+	legacyGroupID := "QQ-Group:810004"
+	logName := "rebound-campaign"
+
+	officialLogID, err := service.LogGetOrCreate(mockDB, officialGroupID, logName)
+	if err != nil {
+		t.Fatalf("seed official log: %v", err)
+	}
+	if !RegisterOfficialQQIdentityAlias(officialGroupID, legacyGroupID) {
+		t.Fatal("failed to register synthetic group alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialGroupID) })
+	legacyLogID, err := service.LogGetOrCreate(mockDB, legacyGroupID, logName)
+	if err != nil {
+		t.Fatalf("seed legacy log: %v", err)
+	}
+
+	ctx := &MsgContext{
+		Dice:  &Dice{DBOperator: mockDB, Logger: sealdiceLogger.M()},
+		Group: &GroupInfo{GroupID: officialGroupID, LogCurName: logName, LogCurID: officialLogID, LogOn: true},
+	}
+	state := ensureGroupLogState(ctx, ctx.Group)
+	if state.ID != legacyLogID {
+		t.Fatalf("reconciled log ID = %d, want legacy ID %d", state.ID, legacyLogID)
+	}
+}
+
+func TestResolveLogStorageGroupIDLeavesUnboundGroupUnchanged(t *testing.T) {
+	groupID := "QQ-Group:810003"
+	if got := resolveLogStorageGroupID(groupID); got != groupID {
+		t.Fatalf("resolveLogStorageGroupID(%q) = %q", groupID, got)
 	}
 }

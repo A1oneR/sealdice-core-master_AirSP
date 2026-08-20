@@ -359,6 +359,76 @@ type MessageWrapper struct {
 	ChannelID string // 可选
 }
 
+const replyFlagOfficialQQMarkdown = "officialqq-markdown"
+
+// KeyboardReplySender is an optional adapter capability for native message
+// keyboards.  Adapters that do not support keyboards simply omit this
+// interface and callers transparently fall back to the ordinary text path.
+// The payload deliberately uses map[string]interface{} so JS extensions can
+// construct the official QQ JSON without importing a platform SDK.
+type KeyboardReplySender interface {
+	SendToPersonWithKeyboard(ctx *MsgContext, userID string, text string, keyboard map[string]interface{}, flag string)
+	SendToGroupWithKeyboard(ctx *MsgContext, groupID string, text string, keyboard map[string]interface{}, flag string)
+}
+
+// ReplyToSenderWithKeyboard sends a reply with an optional native keyboard.
+// It is intentionally additive: ordinary adapters and ordinary plugins keep
+// using ReplyToSender unchanged.
+func ReplyToSenderWithKeyboard(ctx *MsgContext, msg *Message, text string, keyboard map[string]interface{}) {
+	if ctx == nil || msg == nil || ctx.Dice == nil {
+		logger.M().Errorf("ReplyToSenderWithKeyboard 被调用，但没有正确传递参数！请检查您的参数！: ctx=%v, msg=%v", ctx, msg)
+		return
+	}
+	replyCtx := ctx.captureReplyContext()
+	panicHandler.Once(logger.M(), func() {
+		if ctx.EndPoint != nil {
+			if sender, ok := ctx.EndPoint.Adapter.(KeyboardReplySender); ok && keyboard != nil {
+				if msg.MessageType == "group" {
+					sender.SendToGroupWithKeyboard(replyCtx, msg.GroupID, text, keyboard, "")
+				} else {
+					sender.SendToPersonWithKeyboard(replyCtx, msg.Sender.UserID, text, keyboard, "")
+				}
+				return
+			}
+		}
+		ReplyToSenderRaw(replyCtx, msg, text, "")
+	})
+}
+
+// ReplyGroupWithKeyboard and ReplyPersonWithKeyboard are explicit variants
+// used when a command replies privately while it was received in a group.
+func ReplyGroupWithKeyboard(ctx *MsgContext, msg *Message, text string, keyboard map[string]interface{}) {
+	if ctx == nil || msg == nil || ctx.Dice == nil {
+		return
+	}
+	replyCtx := ctx.captureReplyContext()
+	panicHandler.Once(logger.M(), func() {
+		if ctx.EndPoint != nil {
+			if sender, ok := ctx.EndPoint.Adapter.(KeyboardReplySender); ok && keyboard != nil {
+				sender.SendToGroupWithKeyboard(replyCtx, msg.GroupID, text, keyboard, "")
+				return
+			}
+		}
+		ReplyGroupRaw(replyCtx, msg, text, "")
+	})
+}
+
+func ReplyPersonWithKeyboard(ctx *MsgContext, msg *Message, text string, keyboard map[string]interface{}) {
+	if ctx == nil || msg == nil || ctx.Dice == nil {
+		return
+	}
+	replyCtx := ctx.captureReplyContext()
+	panicHandler.Once(logger.M(), func() {
+		if ctx.EndPoint != nil {
+			if sender, ok := ctx.EndPoint.Adapter.(KeyboardReplySender); ok && keyboard != nil {
+				sender.SendToPersonWithKeyboard(replyCtx, msg.Sender.UserID, text, keyboard, "")
+				return
+			}
+		}
+		ReplyPersonRaw(replyCtx, msg, text, "")
+	})
+}
+
 func ReplyToSenderRaw(ctx *MsgContext, msg *Message, text string, flag string) {
 	inGroup := msg.MessageType == "group"
 	if inGroup {
@@ -384,6 +454,20 @@ func ReplyToSender(ctx *MsgContext, msg *Message, text string) {
 	replyCtx := ctx.captureReplyContext()
 	panicHandler.Once(logger.M(), func() {
 		ReplyToSenderRaw(replyCtx, msg, text, "")
+	})
+}
+
+// ReplyToSenderMarkdown requests native Markdown when the active adapter
+// supports it. Other adapters receive the same content through their ordinary
+// text path, so extensions can use this API without platform-specific routing.
+func ReplyToSenderMarkdown(ctx *MsgContext, msg *Message, text string) {
+	if ctx == nil || msg == nil || ctx.Dice == nil {
+		logger.M().Errorf("ReplyToSenderMarkdown 被调用，但没有正确传递参数！请检查您的参数！: ctx=%v, msg=%v", ctx, msg)
+		return
+	}
+	replyCtx := ctx.captureReplyContext()
+	panicHandler.Once(logger.M(), func() {
+		ReplyToSenderRaw(replyCtx, msg, text, replyFlagOfficialQQMarkdown)
 	})
 }
 

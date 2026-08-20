@@ -426,6 +426,23 @@ func TestPrepareOfficialQQPaginationTextKeepsPlainTextBehaviorWithoutMarkdown(t 
 	}
 }
 
+func TestFinalizeOfficialQQMessageCanForceMarkdownPerReply(t *testing.T) {
+	t.Parallel()
+
+	d := &Dice{}
+	s := &IMSession{Parent: d}
+	pa := &PlatformAdapterOfficialQQ{EndPoint: &EndPointInfo{EndPointInfoBase: EndPointInfoBase{Session: s}}}
+	toCreate := &dto.MessageToCreate{}
+	pa.finalizeMessageToCreate(toCreate, "# 标题\n\n$x^2$", nil, true, true)
+
+	if toCreate.MsgType != 2 || toCreate.Markdown == nil {
+		t.Fatalf("forced Markdown reply = %#v, want msg_type=2 with markdown", toCreate)
+	}
+	if toCreate.Markdown.Content != "# 标题\n\n$x^2$" || toCreate.Content != "" {
+		t.Fatalf("forced Markdown payload = %#v, want content only in markdown field", toCreate)
+	}
+}
+
 func TestOfficialQQImagePaginationUsesSeparateCallbackControl(t *testing.T) {
 	t.Parallel()
 
@@ -450,13 +467,16 @@ func TestOfficialQQImagePaginationUsesSeparateCallbackControl(t *testing.T) {
 	}
 
 	sessionKey := officialQQPaginationSessionKey("group", "OpenQQ-Group:1-test", "OpenQQ:1-user")
-	pa.addToPaginationCache("cache", pages, sessionKey)
+	pa.addToPaginationCache("cache", pages, sessionKey, true)
 	secondPage, ok := pa.advanceManualPagination(sessionKey, 1)
 	if !ok || secondPage == nil {
 		t.Fatal("manual next-page request did not find the cached image report")
 	}
 	if secondPage.CacheID != "cache" || secondPage.PageIndex != 1 || secondPage.Text != pages[1] {
 		t.Fatalf("manual next-page request returned the wrong image page: %#v", secondPage)
+	}
+	if !secondPage.UseMarkdown {
+		t.Fatal("manual pagination lost the per-reply Markdown mode")
 	}
 	boundary, ok := pa.advanceManualPagination(sessionKey, 1)
 	if !ok || boundary == nil || !strings.Contains(boundary.Notice, "最后一页") {
@@ -507,6 +527,19 @@ func TestAttachOfficialQQKeyboardKeepsPlainTextCallbacks(t *testing.T) {
 	attachOfficialQQKeyboard(plain, keyboardObj)
 	if plain.Keyboard != keyboardObj || plain.PromptKeyboard != nil {
 		t.Fatal("plain-text keyboard no longer uses the native top-level field")
+	}
+}
+
+func TestOfficialQQCustomPaginationHintIsExtracted(t *testing.T) {
+	t.Parallel()
+	keyboardObj := (&PlatformAdapterOfficialQQ{}).buildPaginationKeyboard("cache", 0, 2)
+	media := &dto.MessageToCreate{MsgType: dto.RichMediaMsg, Media: &dto.MediaInfo{FileInfo: []byte("uploaded-image")}}
+	mediaContent, controlContent, split := splitOfficialQQRichMediaPagination(media, "[CQ:image,file=https://example.com/one.png][[YAN_PAGINATION:自定义翻页提示]]", keyboardObj)
+	if !split || mediaContent != "" {
+		t.Fatalf("custom pagination hint did not preserve rich-media split: media=%q split=%t", mediaContent, split)
+	}
+	if !strings.Contains(controlContent, "自定义翻页提示") || strings.Contains(controlContent, "YAN_PAGINATION") {
+		t.Fatalf("custom pagination marker leaked or was not replaced: %q", controlContent)
 	}
 }
 

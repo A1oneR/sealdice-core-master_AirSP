@@ -187,6 +187,30 @@ func TestNormalizeLocalResourcePath(t *testing.T) {
 	}
 }
 
+func TestNormalizeLocalResourcePathAcceptsLegacyWindowsFileURL(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows file URL regression test")
+	}
+
+	filename := writeResourceFile(t, "legacy-file-url.png")
+	canonical, err := message.NormalizeLocalResourcePath(filename)
+	if err != nil {
+		t.Fatalf("normalize resource: %v", err)
+	}
+	parsed, err := url.Parse(canonical)
+	if err != nil || parsed.Host != "" || len(parsed.Path) < 3 {
+		t.Fatalf("unexpected canonical URL %q", canonical)
+	}
+	legacy := "file://" + strings.TrimPrefix(canonical, "file:///")
+	normalized, err := message.NormalizeLocalResourcePath(legacy)
+	if err != nil {
+		t.Fatalf("normalize legacy URL %q: %v", legacy, err)
+	}
+	if normalized != canonical {
+		t.Fatalf("legacy URL normalized to %q, want %q", normalized, canonical)
+	}
+}
+
 func TestConvertStringMessageNormalizesAllLocalResourceKinds(t *testing.T) {
 	imagePath := writeResourceFile(t, "image.png")
 	recordPath := writeResourceFile(t, "record.wav")

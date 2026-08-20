@@ -28,6 +28,7 @@ type logNameAliasIndex struct {
 }
 
 func buildLogNameAliasIndex(operator engine.DatabaseOperator, groupID string) (*logNameAliasIndex, error) {
+	groupID = resolveLogStorageGroupID(groupID)
 	names, err := service.LogGetList(operator, groupID)
 	if err != nil {
 		return nil, err

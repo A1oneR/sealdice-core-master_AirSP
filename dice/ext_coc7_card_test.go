@@ -45,5 +45,29 @@ func TestCocCardCommandsUseCustomText(t *testing.T) {
 		if strings.Contains(reply, "%未知项-") {
 			t.Fatalf("%s used an unregistered custom text item: %q", test.command, reply)
 		}
+		if test.command == ".cohero" && strings.Contains(reply, "\n0") {
+			t.Fatalf("%s rendered a numeric zero instead of the heroic review text: %q", test.command, reply)
+		}
+	}
+}
+
+func TestCocCardCommandsKeepLegacyResultVariables(t *testing.T) {
+	d, ep, adapter, cleanup := newExecuteNewTestDice(t)
+	defer cleanup()
+
+	heroicText := TextTemplateItemList{{"旧版传奇文案:\n{$t制卡结果文本2}", 1}}
+	randomText := TextTemplateItemList{{"旧版随机文案:\n{$t制卡结果文本3}", 1}}
+	d.TextMap["COC:制卡传奇"] = heroicText.toRandomPool()
+	d.TextMap["COC:制卡随机"] = randomText.toRandomPool()
+
+	for _, command := range []string{".cohero", ".coran"} {
+		d.ImSession.ExecuteNew(ep, newGroupMsg("QQ-Group:coc-card-legacy", "QQ:coc-card-legacy", command))
+		reply, ok := adapter.waitForMsg(2 * time.Second)
+		if !ok {
+			t.Fatalf("timeout waiting for %s", command)
+		}
+		if !strings.Contains(reply, "力量:") || strings.HasSuffix(strings.TrimSpace(reply), "0") {
+			t.Fatalf("legacy custom text variable was not populated for %s: %q", command, reply)
+		}
 	}
 }

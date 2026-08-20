@@ -5,8 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"sealdice-core/logger"
 )
@@ -43,6 +46,12 @@ func Base64ToImageFunc() func(string) (string, error) {
 			return "", errors.New("写入文件出错:" + err.Error())
 		}
 		log.Info("File saved to:", imageurlPath)
-		return "file://" + imageurlPath, nil
+		// url.URL 会正确生成 Windows 的 file:///C:/... 形式；直接拼接
+		// "file://" + path 会得到 file://C:/...，解析时会把 C: 当成主机名。
+		fileURLPath := imageurlPath
+		if runtime.GOOS == "windows" && !strings.HasPrefix(fileURLPath, "/") {
+			fileURLPath = "/" + fileURLPath
+		}
+		return (&url.URL{Scheme: "file", Path: fileURLPath}).String(), nil
 	}
 }

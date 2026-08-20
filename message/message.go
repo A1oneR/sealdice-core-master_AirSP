@@ -423,7 +423,13 @@ func localPathFromResourceReference(raw string) (string, error) {
 	}
 
 	localPath := parsed.Path
-	if parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost") {
+	// 兼容旧版 Windows 生成的 file://C:/...（标准形式应为
+	// file:///C:/...）。net/url 会把 C: 解析到 Host，这里还原为盘符，
+	// 避免旧缓存资源被误判为越出临时目录的受限路径。
+	if runtime.GOOS == "windows" && len(parsed.Host) == 2 && parsed.Host[1] == ':' &&
+		((parsed.Host[0] >= 'A' && parsed.Host[0] <= 'Z') || (parsed.Host[0] >= 'a' && parsed.Host[0] <= 'z')) {
+		localPath = parsed.Host + parsed.Path
+	} else if parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost") {
 		localPath = "//" + parsed.Host + parsed.Path
 	}
 	// net/url 已完成路径解码；Windows 盘符还需要去掉 URL 路径的前导斜杠。

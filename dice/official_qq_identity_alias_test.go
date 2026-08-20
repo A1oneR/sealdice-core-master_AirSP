@@ -292,3 +292,32 @@ func TestAttrsManagerDoesNotGuessOfficialQQCharacterWhenSeveralAreActive(t *test
 		t.Fatalf("ambiguous active cards should require .pc tag, got %q", bindingID)
 	}
 }
+
+func TestResolveOfficialQQIdentityAliasForPluginStorage(t *testing.T) {
+	userOpenID := "OpenQQ:3889204361-plugin-storage-user"
+	groupOpenID := "OpenQQ-Group:3889204361-plugin-storage-group"
+	legacyUserID := "QQ:456789012"
+	legacyGroupID := "QQ-Group:949517848"
+	RemoveOfficialQQIdentityAlias(userOpenID)
+	RemoveOfficialQQIdentityAlias(groupOpenID)
+	t.Cleanup(func() {
+		RemoveOfficialQQIdentityAlias(userOpenID)
+		RemoveOfficialQQIdentityAlias(groupOpenID)
+	})
+
+	if !RegisterOfficialQQIdentityAlias(userOpenID, legacyUserID) {
+		t.Fatal("failed to register user alias")
+	}
+	if !RegisterOfficialQQIdentityAlias(groupOpenID, legacyGroupID) {
+		t.Fatal("failed to register group alias")
+	}
+	if got := ResolveOfficialQQIdentityAlias(userOpenID); got != legacyUserID {
+		t.Fatalf("resolved user identity = %q, want %q", got, legacyUserID)
+	}
+	if got := ResolveOfficialQQIdentityAlias(groupOpenID); got != legacyGroupID {
+		t.Fatalf("resolved group identity = %q, want %q", got, legacyGroupID)
+	}
+	if got := ResolveOfficialQQIdentityAlias(" OpenQQ:unbound "); got != "OpenQQ:unbound" {
+		t.Fatalf("unbound identity = %q, want unchanged trimmed identity", got)
+	}
+}

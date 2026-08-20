@@ -32,6 +32,20 @@ func resolveOfficialQQIdentityAlias(identity string) string {
 	return identity
 }
 
+// ResolveOfficialQQIdentityAlias exposes the storage identity associated with
+// an Official QQ OpenID. Callers must keep using the original OpenID for live
+// platform routing; the resolved value is only for persistent user/group data.
+func ResolveOfficialQQIdentityAlias(identity string) string {
+	return resolveOfficialQQIdentityAlias(strings.TrimSpace(identity))
+}
+
+// resolveLogStorageGroupID maps an Official QQ group to the legacy QQ group
+// that owns its native SealDice logs. The live OpenID remains unchanged on
+// GroupInfo and messages so platform routing keeps using the current endpoint.
+func resolveLogStorageGroupID(groupID string) string {
+	return resolveOfficialQQIdentityAlias(strings.TrimSpace(groupID))
+}
+
 // officialQQIdentityOwnerCandidates returns every storage owner that belongs
 // to the same bound QQ identity. Older releases could create character cards
 // before the OpenID-to-QQ alias existed, leaving those cards owned by an
@@ -46,6 +60,43 @@ func officialQQIdentityOwnerCandidates(identity string) []string {
 	aliases := make([]string, 0)
 	officialQQIdentityAliases.Range(func(officialID, legacyID string) bool {
 		if legacyID == canonical && officialID != canonical {
+			aliases = append(aliases, officialID)
+		}
+		return true
+	})
+	sort.Strings(aliases)
+
+	candidates := make([]string, 0, len(aliases)+2)
+	seen := map[string]bool{}
+	appendCandidate := func(candidate string) {
+		if candidate == "" || seen[candidate] {
+			return
+		}
+		seen[candidate] = true
+		candidates = append(candidates, candidate)
+	}
+	appendCandidate(canonical)
+	for _, alias := range aliases {
+		appendCandidate(alias)
+	}
+	appendCandidate(identity)
+	return candidates
+}
+
+// officialQQIdentityGroupCandidates returns every persisted group identity
+// registered for the same legacy QQ group. This mirrors the character owner
+// lookup and lets log recovery see records written before an Official QQ group
+// alias was refreshed in the current process.
+func officialQQIdentityGroupCandidates(identity string) []string {
+	identity = strings.TrimSpace(identity)
+	canonical := resolveOfficialQQIdentityAlias(identity)
+	if canonical == "" {
+		return nil
+	}
+
+	aliases := make([]string, 0)
+	officialQQIdentityAliases.Range(func(officialID, legacyID string) bool {
+		if legacyID == canonical && strings.HasPrefix(officialID, "OpenQQ-Group:") && officialID != canonical {
 			aliases = append(aliases, officialID)
 		}
 		return true
