@@ -41,7 +41,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/juliangruber/go-intersect v1.1.0
-	github.com/kardianos/service v1.2.4
+	github.com/kardianos/service v1.3.0
 	github.com/labstack/echo/v4 v4.15.0
 	github.com/lascape/sat v1.0.4
 	github.com/lonelyevil/kook v0.0.31
@@ -71,8 +71,8 @@ require (
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/samber/lo v1.52.0
 	github.com/schollz/progressbar/v3 v3.19.1
-	github.com/sealdice/dicescript v0.0.0-20260729052003-c4c99fe00cb6
 	github.com/sealdice/botgo v0.0.0-20260724133029-df949851f30b
+	github.com/sealdice/dicescript v0.0.0-20260729052003-c4c99fe00cb6
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.17.3
 	github.com/sunshineplan/imgconv v1.1.15
