@@ -3,6 +3,9 @@ package dice
 
 import (
 	"context"
+	"crypto/md5"  //nolint:gosec // QQ upload protocol fixture.
+	"crypto/sha1" //nolint:gosec // QQ upload protocol fixture.
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +31,16 @@ type officialQQTransportFunc func(ctx context.Context, method, url string, body 
 
 func (f officialQQTransportFunc) Transport(ctx context.Context, method, url string, body interface{}) ([]byte, error) {
 	return f(ctx, method, url, body)
+}
+
+func TestOfficialQQUploadPartIndexBase(t *testing.T) {
+	t.Parallel()
+	if got := officialQQUploadPartIndexBase([]officialQQUploadPart{{Index: 0}, {Index: 1}}); got != 0 {
+		t.Fatalf("zero-based parts got base %d, want 0", got)
+	}
+	if got := officialQQUploadPartIndexBase([]officialQQUploadPart{{Index: 1}}); got != 1 {
+		t.Fatalf("one-based parts got base %d, want 1", got)
+	}
 }
 
 func TestRetryOfficialQQMediaUploadRetriesTimeoutThenSucceeds(t *testing.T) {
@@ -99,6 +112,52 @@ func TestOfficialQQMediaUploadRetryableAPIErrors(t *testing.T) {
 				t.Fatalf("isOfficialQQMediaUploadRetryable()=%t, want %t", got, test.retryable)
 			}
 		})
+	}
+}
+
+func TestOfficialQQUploadSceneURL(t *testing.T) {
+	t.Parallel()
+
+	got, err := officialQQUploadSceneURL("groups", "group/id", "upload_prepare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://api.sgroup.qq.com/v2/groups/group%2Fid/upload_prepare"
+	if got != want {
+		t.Fatalf("upload URL = %q, want %q", got, want)
+	}
+	if _, err := officialQQUploadSceneURL("guilds", "id", "upload_prepare"); err == nil {
+		t.Fatal("unsupported upload scene unexpectedly succeeded")
+	}
+}
+
+func TestOfficialQQUploadChecksums(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("sealdice")
+	md5Sum := md5.Sum(data)   //nolint:gosec
+	sha1Sum := sha1.Sum(data) //nolint:gosec
+	if got, want := officialQQMD5Hex(data), hex.EncodeToString(md5Sum[:]); got != want {
+		t.Fatalf("MD5 = %q, want %q", got, want)
+	}
+	if got, want := officialQQSHA1Hex(data), hex.EncodeToString(sha1Sum[:]); got != want {
+		t.Fatalf("SHA1 = %q, want %q", got, want)
+	}
+}
+
+func TestOfficialQQDecodeFileInfo(t *testing.T) {
+	t.Parallel()
+
+	decoded, err := officialQQDecodeFileInfo([]byte(`{"file_info":"ZmlsZS1pbmZv"}`))
+	if err != nil || string(decoded) != "file-info" {
+		t.Fatalf("decoded file_info = %q, %v", decoded, err)
+	}
+	plain, err := officialQQDecodeFileInfo([]byte(`{"file_info":"not base64!"}`))
+	if err != nil || string(plain) != "not base64!" {
+		t.Fatalf("plain file_info = %q, %v", plain, err)
+	}
+	if _, err := officialQQDecodeFileInfo([]byte(`{}`)); err == nil {
+		t.Fatal("missing file_info unexpectedly succeeded")
 	}
 }
 

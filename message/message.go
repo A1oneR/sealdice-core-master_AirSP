@@ -548,6 +548,16 @@ func FilepathToFileElement(fp string) (*FileElement, error) {
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
+		// Preserve the server-provided filename (including its extension). This
+		// is important for official QQ file uploads, where the API does not
+		// infer a name from the downloaded response body.
+		if disposition := resp.Header.Get("Content-Disposition"); disposition != "" {
+			if _, params, parseErr := mime.ParseMediaType(disposition); parseErr == nil {
+				if candidate := strings.TrimSpace(params["filename"]); candidate != "" {
+					fileName = filepath.Base(candidate)
+				}
+			}
+		}
 		return &FileElement{
 			File:        fileName,
 			URL:         normalizedURL,

@@ -78,3 +78,26 @@ func TestBuiltinCommandSetsReplyInterceptContext(t *testing.T) {
 		t.Fatalf("command context leaked after solve: %q %q", ctx.CommandName, ctx.CommandRawArgs)
 	}
 }
+
+func TestExtensionCommandSetsReplyInterceptContext(t *testing.T) {
+	ctx, msg, adapter, ext := newMessageInterceptTestContext("", true)
+	ext.MessageInterceptCommands = []string{"ra"}
+	ext.DefaultSetting = &ExtDefaultSettingItem{DisabledCommand: map[string]bool{}}
+	ext.CmdMap = CmdMapCls{
+		"ra": {
+			Name: "ra",
+			Solve: func(_ *MsgContext, _ *Message, _ *CmdArgs) CmdExecuteResult {
+				ReplyToSender(ctx, msg, "extension reply")
+				return CmdExecuteResult{Solved: true}
+			},
+		},
+	}
+	ctx.Group.SetActivatedExtList([]*ExtInfo{ext}, ctx.Dice)
+	ctx.Session.commandSolve(ctx, msg, &CmdArgs{Command: "ra", RawArgs: "侦查"})
+	if reply, ok := adapter.waitForMsg(100 * time.Millisecond); ok {
+		t.Fatalf("extension command reply was not intercepted: %q", reply)
+	}
+	if ctx.CommandName != "" || ctx.CommandRawArgs != "" {
+		t.Fatalf("command context leaked after extension solve: %q %q", ctx.CommandName, ctx.CommandRawArgs)
+	}
+}

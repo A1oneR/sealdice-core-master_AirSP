@@ -5,8 +5,11 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/md5" //nolint:gosec // QQ official upload API requires MD5 checksums.
 	crand "crypto/rand"
+	"crypto/sha1" //nolint:gosec // QQ official upload API requires SHA1 checksums.
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -625,8 +628,8 @@ func (pa *PlatformAdapterOfficialQQ) connect(probe *OfficialQQAccountProbeResult
 		return pa.failConnect()
 	}
 
-	// 富媒体上传需要等待 QQ 拉取或处理文件，3 秒会在正常网络抖动时误判超时。
-	pa.Api = qqbot.NewOpenAPI(pa.AppID, pa.tokenSource).WithTimeout(10 * time.Second)
+	// 富媒体上传需要等待 QQ 拉取或处理文件；URL 转存和分片合并都可能超过 10 秒。
+	pa.Api = qqbot.NewOpenAPI(pa.AppID, pa.tokenSource).WithTimeout(30 * time.Second)
 
 	botInfo := probe
 	if botInfo == nil {
@@ -2000,6 +2003,242 @@ func (pa *PlatformAdapterOfficialQQ) prepareMediaMessage(file *message.FileEleme
 	return url, nil, nil
 }
 
+const officialQQUploadChecksumPrefixSize = 10002432
+
+type officialQQUploadPrepareRequest struct {
+	FileType int    `json:"file_type"`
+	FileName string `json:"file_name"`
+	FileSize string `json:"file_size"`
+	MD5      string `json:"md5"`
+	SHA1     string `json:"sha1"`
+	MD510M   string `json:"md5_10m"`
+}
+
+type officialQQUploadPart struct {
+	Index        int    `json:"index"`
+	PresignedURL string `json:"presigned_url"`
+	BlockSize    string `json:"block_size"`
+}
+
+type officialQQUploadPrepareResponse struct {
+	UploadID  string                 `json:"upload_id"`
+	BlockSize string                 `json:"block_size"`
+	Parts     []officialQQUploadPart `json:"parts"`
+}
+
+type officialQQUploadPartFinishRequest struct {
+	UploadID  string `json:"upload_id"`
+	PartIndex int    `json:"part_index"`
+	BlockSize string `json:"block_size"`
+	MD5       string `json:"md5"`
+}
+
+func officialQQUploadPartIndexBase(parts []officialQQUploadPart) int {
+	for _, part := range parts {
+		if part.Index == 0 {
+			return 0
+		}
+	}
+	return 1
+}
+
+func officialQQMD5Hex(data []byte) string {
+	sum := md5.Sum(data) //nolint:gosec
+	return hex.EncodeToString(sum[:])
+}
+
+func officialQQSHA1Hex(data []byte) string {
+	sum := sha1.Sum(data) //nolint:gosec
+	return hex.EncodeToString(sum[:])
+}
+
+func officialQQUploadSceneURL(scene, targetID, action string) (string, error) {
+	var resource string
+	switch scene {
+	case "groups":
+		resource = "groups"
+	case "users":
+		resource = "users"
+	default:
+		return "", fmt.Errorf("unsupported official QQ upload scene: %s", scene)
+	}
+	return fmt.Sprintf("%s/v2/%s/%s/%s", qqconstant.APIDomain, resource, url.PathEscape(targetID), action), nil
+}
+
+func officialQQDecodeFileInfo(body []byte) ([]byte, error) {
+	var response struct {
+		FileInfo string `json:"file_info"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("解析 QQ 富媒体上传响应失败: %w", err)
+	}
+	if response.FileInfo == "" {
+		return nil, errors.New("QQ 富媒体上传响应中缺少 file_info")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(response.FileInfo)
+	if err != nil {
+		return []byte(response.FileInfo), nil
+	}
+	return decoded, nil
+}
+
+// uploadOfficialQQMediaData follows QQ's documented local-file flow:
+// upload_prepare -> PUT every part -> upload_part_finish -> /files with upload_id.
+// It deliberately avoids the legacy, undocumented file_data field.
+func (pa *PlatformAdapterOfficialQQ) uploadOfficialQQMediaData(
+	qctx context.Context,
+	scene string,
+	targetID string,
+	data []byte,
+	fileName string,
+	fileType int,
+) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("cannot upload empty media data")
+	}
+	if fileName == "" {
+		fileName = "file.bin"
+	}
+
+	prefix := data
+	if len(prefix) > officialQQUploadChecksumPrefixSize {
+		prefix = prefix[:officialQQUploadChecksumPrefixSize]
+	}
+	prepareURL, err := officialQQUploadSceneURL(scene, targetID, "upload_prepare")
+	if err != nil {
+		return nil, err
+	}
+	prepareBody, err := pa.Api.Transport(qctx, http.MethodPost, prepareURL, &officialQQUploadPrepareRequest{
+		FileType: fileType,
+		FileName: fileName,
+		FileSize: strconv.Itoa(len(data)),
+		MD5:      officialQQMD5Hex(data),
+		SHA1:     officialQQSHA1Hex(data),
+		MD510M:   officialQQMD5Hex(prefix),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("申请 QQ 富媒体分片上传失败: %w", err)
+	}
+
+	var prepared officialQQUploadPrepareResponse
+	if err := json.Unmarshal(prepareBody, &prepared); err != nil {
+		return nil, fmt.Errorf("解析 QQ 富媒体分片上传任务失败: %w", err)
+	}
+	if prepared.UploadID == "" || len(prepared.Parts) == 0 {
+		return nil, errors.New("QQ 富媒体分片上传任务缺少 upload_id 或 parts")
+	}
+	defaultBlockSize, _ := strconv.ParseInt(prepared.BlockSize, 10, 64)
+	if defaultBlockSize <= 0 {
+		defaultBlockSize, _ = strconv.ParseInt(prepared.Parts[0].BlockSize, 10, 64)
+	}
+	if defaultBlockSize <= 0 {
+		return nil, errors.New("QQ 富媒体分片上传任务返回了无效的 block_size")
+	}
+	// Official QQ has returned both zero-based and one-based part indexes in
+	// different API deployments.  The upload_part_finish request must keep the
+	// server-provided index, but slicing the local byte buffer needs a zero-based
+	// offset.  A response without index 0 is therefore treated as one-based.
+	partIndexBase := officialQQUploadPartIndexBase(prepared.Parts)
+
+	uploadClient := &http.Client{Timeout: 60 * time.Second}
+	finishURL, err := officialQQUploadSceneURL(scene, targetID, "upload_part_finish")
+	if err != nil {
+		return nil, err
+	}
+	for _, part := range prepared.Parts {
+		if part.PresignedURL == "" || part.Index < 0 {
+			return nil, fmt.Errorf("QQ 富媒体分片信息无效: index=%d", part.Index)
+		}
+		localIndex := part.Index - partIndexBase
+		if localIndex < 0 {
+			return nil, fmt.Errorf("QQ 富媒体分片序号无效: index=%d base=%d", part.Index, partIndexBase)
+		}
+		start := int64(localIndex) * defaultBlockSize
+		if start >= int64(len(data)) {
+			return nil, fmt.Errorf("QQ 富媒体分片越界: index=%d", part.Index)
+		}
+		partSize, _ := strconv.ParseInt(part.BlockSize, 10, 64)
+		if partSize <= 0 {
+			partSize = defaultBlockSize
+		}
+		end := start + partSize
+		if end > int64(len(data)) {
+			end = int64(len(data))
+		}
+		chunk := data[int(start):int(end)]
+
+		req, err := http.NewRequestWithContext(qctx, http.MethodPut, part.PresignedURL, bytes.NewReader(chunk))
+		if err != nil {
+			return nil, fmt.Errorf("创建 QQ 富媒体分片请求失败: %w", err)
+		}
+		resp, err := uploadClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("上传 QQ 富媒体第 %d 个分片失败: %w", part.Index, err)
+		}
+		responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("读取 QQ 富媒体第 %d 个分片响应失败: %w", part.Index, readErr)
+		}
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("上传 QQ 富媒体第 %d 个分片失败: HTTP %d: %s", part.Index, resp.StatusCode, strings.TrimSpace(string(responseBody)))
+		}
+
+		_, err = pa.Api.Transport(qctx, http.MethodPost, finishURL, &officialQQUploadPartFinishRequest{
+			UploadID:  prepared.UploadID,
+			PartIndex: part.Index,
+			BlockSize: strconv.Itoa(len(chunk)),
+			MD5:       officialQQMD5Hex(chunk),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("确认 QQ 富媒体第 %d 个分片失败: %w", part.Index, err)
+		}
+	}
+
+	filesURL, err := officialQQUploadSceneURL(scene, targetID, "files")
+	if err != nil {
+		return nil, err
+	}
+	mediaBody, err := pa.Api.Transport(qctx, http.MethodPost, filesURL, map[string]interface{}{
+		"file_type":    fileType,
+		"file_name":    fileName,
+		"srv_send_msg": false,
+		"upload_id":    prepared.UploadID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("合并 QQ 富媒体分片失败: %w", err)
+	}
+	return officialQQDecodeFileInfo(mediaBody)
+}
+
+// officialQQUploadFileName supplies the file_name required by QQ's rich-media
+// upload endpoint. FileElement.File is authoritative; URL/path is a fallback.
+func officialQQUploadFileName(file *message.FileElement, fallbackURL string) string {
+	if file != nil {
+		if name := strings.TrimSpace(file.File); name != "" {
+			name = filepath.Base(name)
+			if filepath.Ext(name) != "" {
+				return name
+			}
+		}
+		for _, candidate := range []string{file.URL, fallbackURL} {
+			if u, err := url.Parse(candidate); err == nil {
+				for _, key := range []string{"filename", "file_name", "download_name", "name"} {
+					if queryName := strings.TrimSpace(u.Query().Get(key)); queryName != "" {
+						return filepath.Base(queryName)
+					}
+				}
+				if name := strings.TrimSpace(path.Base(u.Path)); name != "" && name != "." && name != "/" {
+					if filepath.Ext(name) != "" {
+						return name
+					}
+				}
+			}
+		}
+	}
+	return "file.bin"
+}
+
 func (pa *PlatformAdapterOfficialQQ) sendQQGuildDirectMsgRaw( /* ctx */ _ *MsgContext, rowMsgID string, guildID, channelID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
@@ -2043,13 +2282,18 @@ func (pa *PlatformAdapterOfficialQQ) uploadC2CMedia(qctx context.Context, userOp
 	}
 	sendURL := url
 	if data != nil {
-		sendURL = ""
+		fileInfo, err := pa.uploadOfficialQQMediaData(qctx, "users", userOpenID, data, officialQQUploadFileName(file, url), fileType)
+		if err != nil {
+			return nil, err
+		}
+		return &dto.MediaInfo{FileInfo: fileInfo}, nil
 	}
 	fMsg := &C2CRichMediaMessage{
 		FileType:   fileType,
 		URL:        sendURL,
 		FileData:   data,
 		SrvSendMsg: false,
+		FileName:   officialQQUploadFileName(file, url),
 	}
 	media, err := retryOfficialQQMediaUpload(qctx, officialQQMediaUploadRetryDelays, func() (*dto.Message, error) {
 		return pa.Api.PostC2CMessage(qctx, userOpenID, fMsg)
@@ -2071,13 +2315,18 @@ func (pa *PlatformAdapterOfficialQQ) uploadGroupMedia(qctx context.Context, grou
 	}
 	sendURL := url
 	if data != nil {
-		sendURL = ""
+		fileInfo, err := pa.uploadOfficialQQMediaData(qctx, "groups", groupID, data, officialQQUploadFileName(file, url), fileType)
+		if err != nil {
+			return nil, err
+		}
+		return &dto.MediaInfo{FileInfo: fileInfo}, nil
 	}
 	fMsg := &dto.MessageMediaToCreate{
 		FileType:   fileType,
 		URL:        sendURL,
 		FileData:   data,
 		SrvSendMsg: false,
+		FileName:   officialQQUploadFileName(file, url),
 	}
 	media, err := retryOfficialQQMediaUpload(qctx, officialQQMediaUploadRetryDelays, func() (*dto.Media, error) {
 		return pa.Api.PostGroupFile(qctx, groupID, fMsg)
@@ -2869,6 +3118,7 @@ type C2CRichMediaMessage struct {
 	URL        string `json:"url,omitempty"`
 	SrvSendMsg bool   `json:"srv_send_msg"`
 	FileData   []byte `json:"file_data,omitempty"`
+	FileName   string `json:"file_name,omitempty"`
 }
 
 func (msg *C2CRichMediaMessage) GetEventID() string {

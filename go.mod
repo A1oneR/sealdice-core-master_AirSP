@@ -233,6 +233,7 @@ require (
 )
 
 replace (
+	github.com/sealdice/botgo => ./third_party/botgo_local
 	github.com/Szzrain/dodo-open-go v0.2.7 => github.com/sealdice/dodo-open-go v0.2.8
 	// Try to fix sqlite in cgofree
 	// github.com/glebarez/sqlite v1.11.0 => github.com/PaienNate/sqlite v0.0.0-20241102151933-067d82f14685

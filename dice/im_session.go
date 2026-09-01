@@ -2156,13 +2156,16 @@ func (s *IMSession) commandSolve(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs
 		if item == nil {
 			return false
 		}
-		if ext == nil {
-			previousCommand, previousRawArgs := ctx.CommandName, ctx.CommandRawArgs
-			ctx.CommandName, ctx.CommandRawArgs = cmdArgs.Command, cmdArgs.RawArgs
-			defer func() {
-				ctx.CommandName, ctx.CommandRawArgs = previousCommand, previousRawArgs
-			}()
-		}
+		// Keep the command context available for every command, including
+		// commands solved by extensions. Reply interception runs while Solve is
+		// executing, and previously only built-in commands populated these fields;
+		// that made extension commands such as COC7's ra/sc invisible to
+		// OnMessageSendIntercept.
+		previousCommand, previousRawArgs := ctx.CommandName, ctx.CommandRawArgs
+		ctx.CommandName, ctx.CommandRawArgs = cmdArgs.Command, cmdArgs.RawArgs
+		defer func() {
+			ctx.CommandName, ctx.CommandRawArgs = previousCommand, previousRawArgs
+		}()
 
 		if item.Raw { //nolint:nestif
 			if item.CheckCurrentBotOn {
