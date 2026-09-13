@@ -278,6 +278,8 @@ type Dice struct {
 	PublicDice        *public_dice.PublicDiceClient `json:"-" yaml:"-"`
 	PublicDiceTimerId cron.EntryID                  `json:"-" yaml:"-"`
 
+	ChatManager *ChatManager `json:"-" yaml:"-"`
+
 	ContainerMode bool `json:"-" yaml:"-"` // 容器模式：禁用内置适配器，不允许使用内置Lagrange和旧的内置Gocq
 
 	IsAlreadyLoadConfig bool `yaml:"-"` // 如果在loads前崩溃，那么不写入配置，防止覆盖为空的
@@ -354,6 +356,7 @@ func (d *Dice) Init(operator engine.DatabaseOperator, uiWriter *logger.UIWriter)
 	// ActiveWithGraph 通过 activeWithGraph() 方法懒加载，无需在此初始化
 	d.GameSystemMap = new(SyncMap[string, *GameSystemTemplate])
 	d.DirtyGroups = new(SyncMap[string, int64]) // 脏群组列表
+	d.ChatManager = NewChatManager(d)
 	d.ConfigManager = NewConfigManager(filepath.Join(d.BaseConfig.DataDir, "configs", "plugin-configs.json"))
 	err = d.ConfigManager.Load()
 	if err != nil {
@@ -1197,3 +1200,14 @@ func (d *Dice) PackageSetup() {
 		d.Logger.Warnf("恢复扩展包规则模板失败: %v", err)
 	}
 }
+
+func (d *Dice) GetChatManager() *ChatManager {
+	if d == nil {
+		return nil
+	}
+	if d.ChatManager == nil {
+		d.ChatManager = NewChatManager(d)
+	}
+	return d.ChatManager
+}
+

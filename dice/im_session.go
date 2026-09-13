@@ -970,6 +970,10 @@ func (s *IMSession) Execute(ep *EndPointInfo, msg *Message, runInSync bool) {
 		VarSetValueStr(mctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
 		mctx.IsCurGroupBotOn = msg.MessageType == "group" && mctx.Group.IsActive(mctx)
 
+		if msg.MessageType == "group" {
+			d.GetChatManager().AddIncomingMessage(mctx, msg)
+		}
+
 		if mctx.Group != nil && mctx.Group.System != "" {
 			mctx.SystemTemplate = mctx.Group.GetCharTemplate(d)
 			// tmpl, _ := d.GameSystemMap.Load(group.System)
@@ -1346,6 +1350,10 @@ func (s *IMSession) ExecuteNew(ep *EndPointInfo, msg *Message) {
 	mctx.Group, mctx.Player = GetPlayerInfoBySender(mctx, msg)
 	VarSetValueStr(mctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
 	mctx.IsCurGroupBotOn = msg.MessageType == "group" && mctx.Group.IsActive(mctx)
+
+	if msg.MessageType == "group" {
+		d.GetChatManager().AddIncomingMessage(mctx, msg)
+	}
 
 	if mctx.Group != nil && mctx.Group.System != "" {
 		mctx.SystemTemplate = mctx.Group.GetCharTemplate(d)
@@ -2361,6 +2369,9 @@ func (s *IMSession) OnMessageDeleted(mctx *MsgContext, msg *Message) {
 }
 
 func (s *IMSession) OnMessageSend(ctx *MsgContext, msg *Message, flag string) {
+	if s.Parent != nil && msg != nil && (msg.MessageType == "group" || msg.GroupID != "") {
+		s.Parent.GetChatManager().AddOutgoingMessage(ctx, msg)
+	}
 	for _, i := range s.Parent.ExtList {
 		i.CallOnMessageSend(ctx.Dice, ctx, msg, flag)
 	}

@@ -675,6 +675,12 @@ func Bind(e *echo.Echo, _myDice *dice.DiceManager) {
 	e.POST(prefix+"/group/disable_all", groupDisableAll)
 	e.POST(prefix+"/group/quit_one", groupQuit)
 
+	e.GET(prefix+"/chat/groups", chatGroupList)
+	e.GET(prefix+"/chat/messages", chatMessageList)
+	e.POST(prefix+"/chat/send", chatMessageSend)
+	e.POST(prefix+"/chat/clear", chatMessageClear)
+	e.GET(prefix+"/chat/image", chatImageGet)
+
 	e.GET(prefix+"/banconfig/list", banMapList)
 	e.GET(prefix+"/banconfig/get", banConfigGet)
 	e.POST(prefix+"/banconfig/set", banConfigSet)

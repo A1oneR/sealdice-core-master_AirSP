@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/parquet-go/parquet-go"
@@ -71,6 +72,15 @@ func GetLogTxtAndParquetFile(env UploadEnv) (*os.File, *bytes.Buffer, error) {
 
 				// 写入当前批次的数据
 				for _, line := range cursorLines {
+					if env.ResolveIdentity != nil {
+						resolvedUniform, resolvedIM := env.ResolveIdentity(line.UniformID, fmt.Sprintf("%v", line.IMUserID))
+						if resolvedUniform != "" {
+							line.UniformID = resolvedUniform
+						}
+						if resolvedIM != "" {
+							line.IMUserID = resolvedIM
+						}
+					}
 					timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05")
 					text := fmt.Sprintf("%s(%v) %s\n%s\n\n", line.Nickname, line.IMUserID, timeTxt, line.Message)
 					if _, err0 = tempLog.WriteString(text); err0 != nil {
@@ -137,7 +147,11 @@ func uploadV105(env UploadEnv) (string, string, error) {
 	_ = os.MkdirAll(env.Dir, 0o755)
 
 	url, uploadTS, updateTS, _ := service.LogGetUploadInfo(env.Db, env.GroupID, env.LogName)
-	if len(url) > 0 && uploadTS > updateTS {
+	cacheValid := len(url) > 0 && uploadTS > updateTS
+	if cacheValid && env.CacheValidator != nil {
+		cacheValid = env.CacheValidator(uploadTS, updateTS)
+	}
+	if cacheValid {
 		// 已有URL且上传时间晚于Log更新时间（最后录入时间），直接返回
 		env.Log.Infof(
 			"查询到之前上传的URL, 直接使用 Log:%s.%s 上传时间:%s 更新时间:%s URL:%s",
@@ -152,7 +166,7 @@ func uploadV105(env UploadEnv) (string, string, error) {
 		env.Log.Infof("没有查询到之前上传的URL Log:%s.%s", env.GroupID, env.LogName)
 	} else {
 		env.Log.Infof(
-			"Log上传后又有更新, 重新上传 Log:%s.%s 上传时间:%s 更新时间:%s",
+			"Log上传后又有更新或别名发生变动, 重新上传 Log:%s.%s 上传时间:%s 更新时间:%s",
 			env.GroupID, env.LogName,
 			time.Unix(uploadTS, 0).Format("2006-01-02 15:04:05"),
 			time.Unix(updateTS, 0).Format("2006-01-02 15:04:05"),
@@ -184,6 +198,21 @@ func uploadV105(env UploadEnv) (string, string, error) {
 
 // formatAndBackup 将导出的日志序列化到 env.data 并存储为本地 zip
 func formatAndBackupV105(env *UploadEnv, tempLog *os.File, parquetFile *bytes.Buffer) (err error) {
+	if env.ResolveIdentity != nil {
+		if strings.HasPrefix(env.GroupID, "OpenQQ-Group:") {
+			resolvedGroup, _ := env.ResolveIdentity(env.GroupID, "")
+			if resolvedGroup != env.GroupID && resolvedGroup != "" {
+				env.GroupID = resolvedGroup
+			}
+		}
+		if strings.HasPrefix(env.UniformID, "OpenQQ") {
+			resolvedUniform, _ := env.ResolveIdentity(env.UniformID, "")
+			if resolvedUniform != env.UniformID && resolvedUniform != "" {
+				env.UniformID = resolvedUniform
+			}
+		}
+	}
+
 	filename, notice := buildLogBackupFilename(env.GroupID, env.LogName, time.Now())
 	env.appendNotice(notice)
 	fzip, err := os.OpenFile(

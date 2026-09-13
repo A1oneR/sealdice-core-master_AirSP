@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         QQ官方Bot昵称桥接
 // @author       local
-// @version      1.7.0
+// @version      1.8.0
 // @description  将QQ官方Bot身份绑定到原QQ/QQ群，并同步平台昵称到AIPlugin用户档案。
-// @timestamp    2026-08-16
+// @timestamp    2026-09-11
 // @license      MIT
 // @sealVersion  1.6.0
 // ==/UserScript==
@@ -11,7 +11,7 @@
 (() => {
 const EXT_NAME = 'qq-official-name-bridge';
 const AI_EXT_NAME = 'aiplugin4';
-const VERSION = '1.5.0';
+const VERSION = '1.8.0';
 const PENDING_TTL_MS = 10 * 60 * 1000;
 const CARD_RECOVERY_DECOYS = [
   '艾琳娜·沃森', '格兰特·霍尔', '维克托·莱恩', '莉迪亚·格雷', '诺亚·贝克',
@@ -81,6 +81,161 @@ seal.ext.registerBoolConfig(
   false,
   '是否在同步昵称时输出日志'
 );
+seal.ext.registerBoolConfig(
+  ext,
+  'enableButtons',
+  true,
+  '是否在QQ官方Bot消息中附带快捷按钮（角色卡验证、状态查询等）'
+);
+seal.ext.registerBoolConfig(
+  ext,
+  'buttonAutoEnter',
+  true,
+  '快捷按钮点击后是否直接自动发送指令（若关闭则仅将指令填入输入框）'
+);
+
+function isButtonEnabled() {
+  try {
+    return seal.ext.getBoolConfig(ext, 'enableButtons');
+  } catch (err) {
+    return true;
+  }
+}
+
+function isButtonAutoEnter() {
+  try {
+    return seal.ext.getBoolConfig(ext, 'buttonAutoEnter');
+  } catch (err) {
+    return true;
+  }
+}
+
+function sanitizeButtonLabel(text, maxLen = 16) {
+  const str = String(text || '').replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (str.length <= maxLen) return str;
+  return str.slice(0, Math.max(1, maxLen - 1)) + '…';
+}
+
+function buildCommandButton(id, label, command, visitedLabel, autoEnter, style = 0) {
+  return {
+    id: String(id),
+    render_data: {
+      label: sanitizeButtonLabel(label, 16),
+      visited_label: sanitizeButtonLabel(visitedLabel || label, 16),
+      style: Number(style) || 0
+    },
+    action: {
+      type: 2, // ActionTypeAtBot (指令按钮)
+      permission: { type: 2 }, // PermissionTypAll (所有人可操作，插件内校验身份)
+      data: String(command || ''),
+      enter: autoEnter !== false,
+      unsupport_tips: '当前客户端版本暂不支持快捷按钮，请手动发送指令'
+    }
+  };
+}
+
+function buildKeyboardRows(buttonList, columns = 2, autoEnter = true) {
+  const rows = [];
+  for (let i = 0; i < buttonList.length && rows.length < 5; i += columns) {
+    const chunk = buttonList.slice(i, i + columns);
+    const buttons = chunk.map((b, idx) =>
+      buildCommandButton(
+        b.id || `btn_${rows.length}_${idx}`,
+        b.label || b.name || '',
+        b.command || b.data || '',
+        b.visitedLabel,
+        b.enter !== undefined ? b.enter : autoEnter,
+        b.style !== undefined ? b.style : 0
+      )
+    );
+    if (buttons.length > 0) {
+      rows.push({ buttons });
+    }
+  }
+  return rows;
+}
+
+function normalizeKeyboardRows(input, defaultAutoEnter = true, defaultColumns = 2) {
+  if (!Array.isArray(input) || input.length === 0) return [];
+  if (input[0] && Array.isArray(input[0].buttons)) {
+    return input.slice(0, 5);
+  }
+  if (input[0] && Array.isArray(input[0])) {
+    const rows = [];
+    for (let r = 0; r < input.length && rows.length < 5; r++) {
+      const rowChunk = input[r].slice(0, 5);
+      const buttons = rowChunk.map((b, idx) =>
+        buildCommandButton(
+          b.id || `btn_${r}_${idx}`,
+          b.label || b.name || '',
+          b.command || b.data || '',
+          b.visitedLabel,
+          b.enter !== undefined ? b.enter : defaultAutoEnter,
+          b.style !== undefined ? b.style : 0
+        )
+      );
+      if (buttons.length > 0) {
+        rows.push({ buttons });
+      }
+    }
+    return rows;
+  }
+  return buildKeyboardRows(input, defaultColumns, defaultAutoEnter);
+}
+
+function buildQuizKeyboardRows(code, options, cmdPrefix, fallbackText, autoEnter = true) {
+  const buttonItems = [];
+  (Array.isArray(options) ? options : []).forEach((name, index) => {
+    const num = index + 1;
+    buttonItems.push({
+      id: `quiz_${num}`,
+      label: `${num}. ${name}`,
+      visitedLabel: `已选: ${name}`,
+      command: `${cmdPrefix} ${code} ${num}`,
+      enter: autoEnter,
+      style: 0
+    });
+  });
+  buttonItems.push({
+    id: 'quiz_6',
+    label: `6. ${fallbackText}`,
+    visitedLabel: `已选: ${fallbackText}`,
+    command: `${cmdPrefix} ${code} 6`,
+    enter: autoEnter,
+    style: 0
+  });
+  return buildKeyboardRows(buttonItems, 2, autoEnter);
+}
+
+function replyWithButtons(ctx, msg, text, buttonRows) {
+  if (!isButtonEnabled() || !Array.isArray(buttonRows) || buttonRows.length === 0) {
+    seal.replyToSender(ctx, msg, text);
+    return;
+  }
+
+  const userId = currentUserId(ctx, msg);
+  const groupId = currentGroupId(ctx, msg);
+  const isOfficial = !!getOfficialQQIdentity(userId) || isOfficialGroupId(groupId);
+
+  if (!isOfficial || typeof seal.replyToSenderWithKeyboard !== 'function') {
+    seal.replyToSender(ctx, msg, text);
+    return;
+  }
+
+  const rows = normalizeKeyboardRows(buttonRows, isButtonAutoEnter(), 2);
+  if (!rows.length) {
+    seal.replyToSender(ctx, msg, text);
+    return;
+  }
+
+  const payload = { content: { rows } };
+  try {
+    seal.replyToSenderWithKeyboard(ctx, msg, text, payload);
+  } catch (err) {
+    console.warn(`[${EXT_NAME}] 发送快捷按钮失败，降级为普通文本: ${err.message || err}`);
+    seal.replyToSender(ctx, msg, text);
+  }
+}
 
 function getOfficialQQIdentity(userId) {
   if (typeof userId !== 'string') return null;
@@ -158,10 +313,15 @@ function requireUserBinding(ctx, msg, featureName) {
   const status = getUserBindingStatus(currentUserId(ctx, msg));
   if (status.bound) return true;
   const feature = sanitizeCardChoice(featureName || '该功能');
-  seal.replyToSender(
+  replyWithButtons(
     ctx,
     msg,
-    `${feature || '该功能'}需要先绑定原QQ号。\n请发送：.QQ绑定 <原QQ号>\n旧Bot不可用时可按随后给出的角色卡选项完成验证。`
+    `${feature || '该功能'}需要先绑定原QQ号。\n请发送：.QQ绑定 <原QQ号>\n旧Bot不可用时可按随后给出的角色卡选项完成验证。`,
+    [
+      [
+        { label: '🔗 发起QQ绑定', command: '.QQ绑定 ', enter: false, style: 1 }
+      ]
+    ]
   );
   return false;
 }
@@ -657,16 +817,40 @@ cmdUserBind.solve = (ctx, msg, cmdArgs) => {
   const officialIdentity = getOfficialQQIdentity(userId);
   const legacyUserId = normalizeLegacyUserId(userId);
 
+  if (op === '帮助' || op.toLowerCase() === 'help') {
+    replyWithButtons(ctx, msg, cmdUserBind.help, [
+      [
+        { label: '📊 绑定状态', command: '.QQ绑定 状态', enter: true, style: 0 },
+        { label: '🔗 发起绑定', command: '.QQ绑定 ', enter: false, style: 1 }
+      ],
+      [
+        { label: '🔓 解除绑定', command: '.QQ绑定 解绑', enter: true, style: 0 }
+      ]
+    ]);
+    return commandResult();
+  }
+
   if (op === '状态' || op.toLowerCase() === 'status') {
     const bound = officialIdentity ? readBinding('user', userId) : readPrimaryUserBinding(legacyUserId);
     if (bound && officialIdentity) {
       const coreReady = restoreStoredUserBinding(userId, bound);
       readPrimaryUserBinding(bound);
-      seal.replyToSender(ctx, msg, `当前官Bot身份已绑定原QQ，核心映射${coreReady ? '已刷新' : '刷新失败'}。\n${nativeCharacterInventorySummary(bound)}`);
+      replyWithButtons(ctx, msg, `当前官Bot身份已绑定原QQ，核心映射${coreReady ? '已刷新' : '刷新失败'}。\n${nativeCharacterInventorySummary(bound)}`, [
+        [
+          { label: '📊 刷新状态', command: '.QQ绑定 状态', enter: true, style: 0 },
+          { label: '🔓 解除绑定', command: '.QQ绑定 解绑', enter: true, style: 0 }
+        ]
+      ]);
     } else {
-      seal.replyToSender(ctx, msg, bound
+      replyWithButtons(ctx, msg, bound
         ? '当前原QQ已绑定官Bot身份（身份标识已隐藏）。'
-        : '当前身份尚未建立QQ绑定。');
+        : '当前身份尚未建立QQ绑定。',
+        officialIdentity && !bound ? [
+          [
+            { label: '🔗 发起QQ绑定', command: '.QQ绑定 ', enter: false, style: 1 }
+          ]
+        ] : []
+      );
     }
     return commandResult();
   }
@@ -675,7 +859,13 @@ cmdUserBind.solve = (ctx, msg, cmdArgs) => {
     const removed = officialIdentity
       ? removeBinding('user', userId, '')
       : removeBinding('user', '', legacyUserId);
-    seal.replyToSender(ctx, msg, removed ? 'QQ身份绑定已解除。' : '当前身份没有可解除的QQ绑定。');
+    replyWithButtons(ctx, msg, removed ? 'QQ身份绑定已解除。' : '当前身份没有可解除的QQ绑定。',
+      officialIdentity ? [
+        [
+          { label: '🔗 重新发起绑定', command: '.QQ绑定 ', enter: false, style: 1 }
+        ]
+      ] : []
+    );
     return commandResult();
   }
 
@@ -686,12 +876,21 @@ cmdUserBind.solve = (ctx, msg, cmdArgs) => {
 
   const target = normalizeLegacyUserId(op);
   if (!target) {
-    seal.replyToSender(ctx, msg, 'QQ号格式不正确。用法：.QQ绑定 <原QQ号>');
+    replyWithButtons(ctx, msg, 'QQ号格式不正确。用法：.QQ绑定 <原QQ号>', [
+      [
+        { label: '🔗 发起QQ绑定', command: '.QQ绑定 ', enter: false, style: 1 }
+      ]
+    ]);
     return commandResult();
   }
   const current = readBinding('user', userId);
   if (current === target) {
-    seal.replyToSender(ctx, msg, `当前官Bot身份已经绑定 ${target}。`);
+    replyWithButtons(ctx, msg, `当前官Bot身份已经绑定 ${target}。`, [
+      [
+        { label: '📊 查看状态', command: '.QQ绑定 状态', enter: true, style: 0 },
+        { label: '🔓 解除绑定', command: '.QQ绑定 解绑', enter: true, style: 0 }
+      ]
+    ]);
     return commandResult();
   }
   const primaryOfficialId = readPrimaryUserBinding(target);
@@ -700,10 +899,15 @@ cmdUserBind.solve = (ctx, msg, cmdArgs) => {
       primaryOfficialId,
       targetGroupId: currentGroupId(ctx, msg)
     });
-    seal.replyToSender(
+    replyWithButtons(
       ctx,
       msg,
-      `当前群的官Bot身份需要追加绑定。\n验证码：${code}\n请在10分钟内回到首次完成QQ绑定的官Bot群或会话，由本人发送：.QQ绑定确认 ${code}`
+      `当前群的官Bot身份需要追加绑定。\n验证码：${code}\n请在10分钟内回到首次完成QQ绑定的官Bot群或会话，由本人发送：.QQ绑定确认 ${code}`,
+      [
+        [
+          { label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 0 }
+        ]
+      ]
     );
     return commandResult();
   }
@@ -720,14 +924,22 @@ cmdUserBind.solve = (ctx, msg, cmdArgs) => {
     `绑定验证码：${code}`,
     `旧Bot可用时，请在10分钟内使用原QQ号发送：.QQ绑定确认 ${code}`
   ];
+  let buttonRows = [];
   if (quiz && quiz.available) {
     lines.push('', renderCardRecoveryQuiz(code, quiz));
+    buttonRows = buildQuizKeyboardRows(code, quiz.options, '.QQ绑定验证', '没有可用的卡', isButtonAutoEnter());
   } else if (cooldown > 0) {
     lines.push('', `角色卡验证仍在冷却中，约 ${Math.ceil(cooldown / 60000)} 分钟后可重新发起。`);
+    buttonRows = [
+      [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 0 }]
+    ];
   } else if (quiz && quiz.reason) {
     lines.push('', `角色卡验证暂不可用：${quiz.reason}`);
+    buttonRows = [
+      [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 0 }]
+    ];
   }
-  seal.replyToSender(ctx, msg, lines.join('\n'));
+  replyWithButtons(ctx, msg, lines.join('\n'), buttonRows);
   return commandResult();
 };
 
@@ -765,7 +977,9 @@ cmdUserConfirm.solve = (ctx, msg, cmdArgs) => {
       writeBinding('user', pending.officialId, pending.legacyId, pending.requesterId);
       inheritCoreCharacterBinding(pending.targetGroupId, pending.officialId);
       consumePending(code, pending);
-      seal.replyToSender(ctx, msg, '当前新群的官Bot身份已追加绑定，无需重复进行原QQ或角色卡验证。');
+      replyWithButtons(ctx, msg, '当前新群的官Bot身份已追加绑定，无需重复进行原QQ或角色卡验证。', [
+        [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 1 }]
+      ]);
     } catch (err) {
       seal.replyToSender(ctx, msg, `绑定失败：${err.message || err}`);
     }
@@ -781,7 +995,9 @@ cmdUserConfirm.solve = (ctx, msg, cmdArgs) => {
     writeBinding('user', pending.officialId, pending.legacyId, pending.requesterId);
     inheritCoreCharacterBinding(pending.targetGroupId, pending.officialId);
     consumePending(code, pending);
-    seal.replyToSender(ctx, msg, 'QQ身份绑定成功，官Bot侧插件将继续使用该QQ号对应的历史数据。');
+    replyWithButtons(ctx, msg, 'QQ身份绑定成功，官Bot侧插件将继续使用该QQ号对应的历史数据。', [
+      [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 1 }]
+    ]);
   } catch (err) {
     seal.replyToSender(ctx, msg, `绑定失败：${err.message || err}`);
   }
@@ -797,7 +1013,9 @@ cmdUserCardVerify.solve = (ctx, msg, cmdArgs) => {
   const pending = /^\d{8}$/.test(code) ? loadPending(code) : null;
   const userId = currentUserId(ctx, msg);
   if (!pending || pending.kind !== 'user' || !Number.isInteger(Number(pending.quizAnswer))) {
-    seal.replyToSender(ctx, msg, '该验证码没有可用的角色卡验证，可能已过期或当前核心不支持。');
+    replyWithButtons(ctx, msg, '该验证码没有可用的角色卡验证，可能已过期或当前核心不支持。', [
+      [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 0 }]
+    ]);
     return commandResult();
   }
   if (!getOfficialQQIdentity(userId) || userId !== pending.officialId) {
@@ -811,7 +1029,9 @@ cmdUserCardVerify.solve = (ctx, msg, cmdArgs) => {
   if (choice !== Number(pending.quizAnswer)) {
     consumePending(code, pending);
     ext.storageSet(cardRecoveryCooldownKey(userId), String(Date.now() + cardRecoveryCooldownMs()));
-    seal.replyToSender(ctx, msg, '角色卡验证未通过，本次验证码已失效。请在冷却结束后重新发起，或改用原QQ确认。');
+    replyWithButtons(ctx, msg, '角色卡验证未通过，本次验证码已失效。请在冷却结束后重新发起，或改用原QQ确认。', [
+      [{ label: '📊 查看状态', command: '.QQ绑定 状态', enter: true, style: 0 }]
+    ]);
     return commandResult();
   }
   try {
@@ -819,9 +1039,11 @@ cmdUserCardVerify.solve = (ctx, msg, cmdArgs) => {
     inheritCoreCharacterBinding(pending.targetGroupId, pending.officialId);
     consumePending(code, pending);
     ext.storageSet(cardRecoveryCooldownKey(userId), '');
-    seal.replyToSender(ctx, msg, pending.quizHasCards
+    replyWithButtons(ctx, msg, pending.quizHasCards
       ? '角色卡验证通过，QQ身份绑定成功。'
-      : '已确认该QQ没有历史角色卡，按新用户完成身份绑定。');
+      : '已确认该QQ没有历史角色卡，按新用户完成身份绑定。', [
+      [{ label: '📊 查看绑定状态', command: '.QQ绑定 状态', enter: true, style: 1 }]
+    ]);
   } catch (err) {
     seal.replyToSender(ctx, msg, `绑定失败：${err.message || err}`);
   }
@@ -843,11 +1065,33 @@ cmdGroupBind.solve = (ctx, msg, cmdArgs) => {
   const officialGroup = isOfficialGroupId(groupId);
   const legacyGroupId = normalizeLegacyGroupId(groupId);
 
+  if (op === '帮助' || op.toLowerCase() === 'help') {
+    replyWithButtons(ctx, msg, cmdGroupBind.help, [
+      [
+        { label: '📊 群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 0 },
+        { label: '🔗 发起群绑定', command: '.QQ群绑定 ', enter: false, style: 1 }
+      ],
+      [
+        { label: '🔓 解除群绑定', command: '.QQ群绑定 解绑', enter: true, style: 0 }
+      ]
+    ]);
+    return commandResult();
+  }
+
   if (op === '状态' || op.toLowerCase() === 'status') {
     const bound = officialGroup ? readBinding('group', groupId) : readReverseBinding('group', legacyGroupId);
-    seal.replyToSender(ctx, msg, bound
+    replyWithButtons(ctx, msg, bound
       ? `当前群已绑定：${officialGroup ? bound : '官Bot群（OpenID已隐藏）'}`
-      : '当前群尚未建立QQ群绑定。');
+      : '当前群尚未建立QQ群绑定。',
+      officialGroup ? [
+        bound ? [
+          { label: '📊 刷新状态', command: '.QQ群绑定 状态', enter: true, style: 0 },
+          { label: '🔓 解绑原群', command: '.QQ群绑定 解绑', enter: true, style: 0 }
+        ] : [
+          { label: '🔗 发起群绑定', command: '.QQ群绑定 ', enter: false, style: 1 }
+        ]
+      ] : []
+    );
     return commandResult();
   }
   if (op === '解绑' || op.toLowerCase() === 'unbind') {
@@ -863,7 +1107,13 @@ cmdGroupBind.solve = (ctx, msg, cmdArgs) => {
     const removed = officialGroup
       ? removeBinding('group', groupId, '')
       : removeBinding('group', '', legacyGroupId);
-    seal.replyToSender(ctx, msg, removed ? 'QQ群绑定已解除。' : '当前群没有可解除的QQ群绑定。');
+    replyWithButtons(ctx, msg, removed ? 'QQ群绑定已解除。' : '当前群没有可解除的QQ群绑定。',
+      officialGroup ? [
+        [
+          { label: '🔗 重新发起群绑定', command: '.QQ群绑定 ', enter: false, style: 1 }
+        ]
+      ] : []
+    );
     return commandResult();
   }
   if (!officialGroup) {
@@ -873,11 +1123,20 @@ cmdGroupBind.solve = (ctx, msg, cmdArgs) => {
 
   const target = normalizeLegacyGroupId(op);
   if (!target) {
-    seal.replyToSender(ctx, msg, 'QQ群号格式不正确。用法：.QQ群绑定 <原QQ群号>');
+    replyWithButtons(ctx, msg, 'QQ群号格式不正确。用法：.QQ群绑定 <原QQ群号>', [
+      [
+        { label: '🔗 发起群绑定', command: '.QQ群绑定 ', enter: false, style: 1 }
+      ]
+    ]);
     return commandResult();
   }
   if (readBinding('group', groupId) === target) {
-    seal.replyToSender(ctx, msg, `当前官Bot群已经绑定 ${target}。`);
+    replyWithButtons(ctx, msg, `当前官Bot群已经绑定 ${target}。`, [
+      [
+        { label: '📊 查看状态', command: '.QQ群绑定 状态', enter: true, style: 0 },
+        { label: '🔓 解绑原群', command: '.QQ群绑定 解绑', enter: true, style: 0 }
+      ]
+    ]);
     return commandResult();
   }
   const ownerId = String(ext.storageGet(`binding:group-owner:${groupId}`) || '');
@@ -899,14 +1158,22 @@ cmdGroupBind.solve = (ctx, msg, cmdArgs) => {
     `群绑定验证码：${code}`,
     `旧Bot可用时，请在10分钟内由原QQ群的管理、群主或骰主发送：.QQ群绑定确认 ${code}`
   ];
+  let buttonRows = [];
   if (quiz && quiz.available) {
     lines.push('', renderGroupLogRecoveryQuiz(code, quiz));
+    buttonRows = buildQuizKeyboardRows(code, quiz.options, '.QQ群绑定验证', '该群无可用Log', isButtonAutoEnter());
   } else if (cooldown > 0) {
     lines.push('', `群Log验证仍在冷却中，约 ${Math.ceil(cooldown / 60000)} 分钟后可重新发起。`);
+    buttonRows = [
+      [{ label: '📊 查看群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 0 }]
+    ];
   } else if (quiz && quiz.reason) {
     lines.push('', `群Log验证暂不可用：${quiz.reason}`);
+    buttonRows = [
+      [{ label: '📊 查看群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 0 }]
+    ];
   }
-  seal.replyToSender(ctx, msg, lines.join('\n'));
+  replyWithButtons(ctx, msg, lines.join('\n'), buttonRows);
   return commandResult();
 };
 
@@ -932,7 +1199,9 @@ cmdGroupConfirm.solve = (ctx, msg, cmdArgs) => {
   try {
     writeBinding('group', pending.officialId, pending.legacyId, pending.requesterId);
     consumePending(code, pending);
-    seal.replyToSender(ctx, msg, 'QQ群绑定成功，官Bot群插件将继续使用原群的历史数据。');
+    replyWithButtons(ctx, msg, 'QQ群绑定成功，官Bot群插件将继续使用原群的历史数据。', [
+      [{ label: '📊 查看群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 1 }]
+    ]);
   } catch (err) {
     seal.replyToSender(ctx, msg, `绑定失败：${err.message || err}`);
   }
@@ -949,7 +1218,9 @@ cmdGroupLogVerify.solve = (ctx, msg, cmdArgs) => {
   const groupId = currentGroupId(ctx, msg);
   const userId = currentUserId(ctx, msg);
   if (!pending || pending.kind !== 'group' || !Number.isInteger(Number(pending.quizAnswer))) {
-    seal.replyToSender(ctx, msg, '该验证码没有可用的群Log验证，可能已过期或当前核心不支持。');
+    replyWithButtons(ctx, msg, '该验证码没有可用的群Log验证，可能已过期或当前核心不支持。', [
+      [{ label: '📊 查看群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 0 }]
+    ]);
     return commandResult();
   }
   if (!isOfficialGroupId(groupId) || groupId !== pending.officialId) {
@@ -967,16 +1238,20 @@ cmdGroupLogVerify.solve = (ctx, msg, cmdArgs) => {
   if (choice !== Number(pending.quizAnswer)) {
     consumePending(code, pending);
     ext.storageSet(groupLogRecoveryCooldownKey(groupId), String(Date.now() + groupLogRecoveryCooldownMs()));
-    seal.replyToSender(ctx, msg, '群Log验证未通过，本次验证码已失效。请在冷却结束后重新发起，或改在原QQ群确认。');
+    replyWithButtons(ctx, msg, '群Log验证未通过，本次验证码已失效。请在冷却结束后重新发起，或改在原QQ群确认。', [
+      [{ label: '📊 查看群状态', command: '.QQ群绑定 状态', enter: true, style: 0 }]
+    ]);
     return commandResult();
   }
   try {
     writeBinding('group', pending.officialId, pending.legacyId, pending.requesterId);
     consumePending(code, pending);
     ext.storageSet(groupLogRecoveryCooldownKey(groupId), '');
-    seal.replyToSender(ctx, msg, pending.quizHasLogs
+    replyWithButtons(ctx, msg, pending.quizHasLogs
       ? '群Log验证通过，QQ群绑定成功。'
-      : '已确认该群没有历史Log，按新群完成QQ群绑定。');
+      : '已确认该群没有历史Log，按新群完成QQ群绑定。', [
+      [{ label: '📊 查看群绑定状态', command: '.QQ群绑定 状态', enter: true, style: 1 }]
+    ]);
   } catch (err) {
     seal.replyToSender(ctx, msg, `绑定失败：${err.message || err}`);
   }
@@ -1004,7 +1279,13 @@ globalThis.SealOfficialQQIdentityBridge = {
   isUserBound,
   requireUserBinding,
   getUserBinding: userId => readBinding('user', userId),
-  getGroupBinding: groupId => readBinding('group', groupId)
+  getGroupBinding: groupId => readBinding('group', groupId),
+  getAllBindings: () => loadBindingIndex(),
+  buildCommandButton,
+  buildKeyboardRows,
+  buildQuizKeyboardRows,
+  normalizeKeyboardRows,
+  replyWithButtons
 };
 
 ext.onMessageReceived = (ctx, msg) => {

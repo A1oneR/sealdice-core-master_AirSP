@@ -16,6 +16,9 @@ import (
 	"sealdice-core/utils/dboperator/engine"
 )
 
+type IdentityResolverFunc func(uniformID, imUserID string) (resolvedUniformID, resolvedIMUserID string)
+type CacheValidatorFunc func(uploadTS, updateTS int64) bool
+
 type UploadEnv struct {
 	Dir      string
 	Db       engine.DatabaseOperator
@@ -27,6 +30,9 @@ type UploadEnv struct {
 	UniformID string
 	GroupID   string
 	Token     string
+
+	ResolveIdentity IdentityResolverFunc
+	CacheValidator  CacheValidatorFunc
 
 	lines  []*model.LogOneItem
 	data   *[]byte

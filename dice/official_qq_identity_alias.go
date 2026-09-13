@@ -4,9 +4,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
-var officialQQIdentityAliases SyncMap[string, string]
+var (
+	officialQQIdentityAliases SyncMap[string, string]
+	lastAliasUpdateTime       int64
+)
 
 // RegisterOfficialQQIdentityAlias registers a compatibility-only identity
 // mapping. Message routing continues to use OpenID; persistent user/group data
@@ -16,6 +21,7 @@ func RegisterOfficialQQIdentityAlias(officialID, legacyID string) bool {
 	legacyID = strings.TrimSpace(legacyID)
 	if isOfficialQQUserAliasPair(officialID, legacyID) || isOfficialQQGroupAliasPair(officialID, legacyID) {
 		officialQQIdentityAliases.Store(officialID, legacyID)
+		atomic.StoreInt64(&lastAliasUpdateTime, time.Now().Unix())
 		return true
 	}
 	return false
@@ -23,6 +29,11 @@ func RegisterOfficialQQIdentityAlias(officialID, legacyID string) bool {
 
 func RemoveOfficialQQIdentityAlias(officialID string) {
 	officialQQIdentityAliases.Delete(strings.TrimSpace(officialID))
+	atomic.StoreInt64(&lastAliasUpdateTime, time.Now().Unix())
+}
+
+func GetLastOfficialQQAliasUpdateTime() int64 {
+	return atomic.LoadInt64(&lastAliasUpdateTime)
 }
 
 func resolveOfficialQQIdentityAlias(identity string) string {
@@ -146,4 +157,47 @@ func isNumericQQIdentity(identity, prefix string) bool {
 	}
 	_, err := strconv.ParseUint(raw, 10, 64)
 	return err == nil
+}
+
+// ResolveOfficialQQLogIdentity resolves an Official QQ user/group identity to its bound legacy numeric QQ identity.
+// It returns (resolvedUniformID, resolvedIMUserID).
+// If bound, resolvedUniformID will have "QQ:<number>" or "QQ-Group:<number>", and resolvedIMUserID will be "<number>".
+// If not bound or not an Official QQ ID, it returns the original identities.
+func ResolveOfficialQQLogIdentity(uniformID, imUserID string) (string, string) {
+	uniformID = strings.TrimSpace(uniformID)
+	imUserID = strings.TrimSpace(imUserID)
+
+	// 1. Check uniformID if present
+	if uniformID != "" {
+		resolved := ResolveOfficialQQIdentityAlias(uniformID)
+		if resolved != uniformID {
+			num := UserIDExtract(resolved)
+			return resolved, num
+		}
+	}
+
+	// 2. Check imUserID if present
+	if imUserID != "" {
+		// Direct lookup
+		resolved := ResolveOfficialQQIdentityAlias(imUserID)
+		if resolved != imUserID {
+			return resolved, UserIDExtract(resolved)
+		}
+
+		// Candidate prefixes for bare OpenIDs
+		candidates := []string{
+			"OpenQQ:" + imUserID,
+			"OpenQQCH:" + imUserID,
+			"OpenQQ-Member-T:" + imUserID,
+			"OpenQQ-Group:" + imUserID,
+		}
+		for _, cand := range candidates {
+			resolved = ResolveOfficialQQIdentityAlias(cand)
+			if resolved != cand {
+				return resolved, UserIDExtract(resolved)
+			}
+		}
+	}
+
+	return uniformID, imUserID
 }

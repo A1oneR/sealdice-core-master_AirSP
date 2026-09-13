@@ -1212,8 +1212,12 @@ func GetLogTxt(ctx *MsgContext, groupID string, logName string, fileNamePrefix s
 
 				// 写入当前批次的数据
 				for _, line := range cursorLines {
+					_, resolvedIM := ResolveOfficialQQLogIdentity(line.UniformID, fmt.Sprintf("%v", line.IMUserID))
+					if resolvedIM == "" {
+						resolvedIM = fmt.Sprintf("%v", line.IMUserID)
+					}
 					timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05")
-					text := fmt.Sprintf("%s(%v) %s\n%s\n\n", line.Nickname, line.IMUserID, timeTxt, line.Message)
+					text := fmt.Sprintf("%s(%v) %s\n%s\n\n", line.Nickname, resolvedIM, timeTxt, line.Message)
 					if _, err = tempLog.WriteString(text); err != nil {
 						resultCh <- fmt.Errorf("写入日志导出临时文件失败: %w", err)
 						return
@@ -1279,6 +1283,12 @@ func logSendToBackend(ctx *MsgContext, groupID string, logName string, skipResol
 		sealBackends = append(sealBackends, sealBackend+"/dice/api/log")
 	}
 
+	uploadUniformID := ctx.EndPoint.UserID
+	resolvedUniform, _ := ResolveOfficialQQLogIdentity(uploadUniformID, "")
+	if resolvedUniform != "" {
+		uploadUniformID = resolvedUniform
+	}
+
 	uploadCtx := storylog.UploadEnv{
 		Dir: dirPath,
 		// 原则上说，上传应该都是读的db，但以防万一，还是传Operator
@@ -1287,8 +1297,13 @@ func logSendToBackend(ctx *MsgContext, groupID string, logName string, skipResol
 		Backends: sealBackends,
 
 		LogName:   logName,
-		UniformID: ctx.EndPoint.UserID,
+		UniformID: uploadUniformID,
 		GroupID:   groupID,
+
+		ResolveIdentity: ResolveOfficialQQLogIdentity,
+		CacheValidator: func(uploadTS, updateTS int64) bool {
+			return uploadTS >= GetLastOfficialQQAliasUpdateTime()
+		},
 	}
 	uploadCtx.Version = storylog.StoryVersionV1
 

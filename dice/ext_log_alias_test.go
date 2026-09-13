@@ -2,7 +2,11 @@
 package dice
 
 import (
+	"archive/zip"
+	"bytes"
+	"compress/zlib"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -378,5 +382,202 @@ func TestResolveLogStorageGroupIDLeavesUnboundGroupUnchanged(t *testing.T) {
 	groupID := "QQ-Group:810003"
 	if got := resolveLogStorageGroupID(groupID); got != groupID {
 		t.Fatalf("resolveLogStorageGroupID(%q) = %q", groupID, got)
+	}
+}
+
+func TestResolveOfficialQQLogIdentity(t *testing.T) {
+	officialUser := "OpenQQ:3889204361-USER1"
+	bareUser := "3889204361-USER1"
+	legacyUser := "QQ:1120934969"
+	officialGroup := "OpenQQ-Group:3889204361-GRP1"
+	legacyGroup := "QQ-Group:88990011"
+
+	if !RegisterOfficialQQIdentityAlias(officialUser, legacyUser) {
+		t.Fatal("failed to register official user alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialUser) })
+
+	if !RegisterOfficialQQIdentityAlias(officialGroup, legacyGroup) {
+		t.Fatal("failed to register official group alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialGroup) })
+
+	// Case 1: Full uniformID
+	u, im := ResolveOfficialQQLogIdentity(officialUser, bareUser)
+	if u != legacyUser || im != "1120934969" {
+		t.Fatalf("ResolveOfficialQQLogIdentity(%q, %q) = (%q, %q), want (%q, %q)", officialUser, bareUser, u, im, legacyUser, "1120934969")
+	}
+
+	// Case 2: Bare imUserID without uniformID
+	u, im = ResolveOfficialQQLogIdentity("", bareUser)
+	if u != legacyUser || im != "1120934969" {
+		t.Fatalf("ResolveOfficialQQLogIdentity('', %q) = (%q, %q), want (%q, %q)", bareUser, u, im, legacyUser, "1120934969")
+	}
+
+	// Case 3: Group identity
+	u, im = ResolveOfficialQQLogIdentity(officialGroup, "3889204361-GRP1")
+	if u != legacyGroup || im != "88990011" {
+		t.Fatalf("ResolveOfficialQQLogIdentity(%q) = (%q, %q), want (%q, %q)", officialGroup, u, im, legacyGroup, "88990011")
+	}
+
+	// Case 4: Unbound OpenQQ
+	u, im = ResolveOfficialQQLogIdentity("OpenQQ:unknown-user", "unknown-user")
+	if u != "OpenQQ:unknown-user" || im != "unknown-user" {
+		t.Fatalf("ResolveOfficialQQLogIdentity unbound = (%q, %q), want original", u, im)
+	}
+
+	// Case 5: Native numeric QQ
+	u, im = ResolveOfficialQQLogIdentity("QQ:123456", "123456")
+	if u != "QQ:123456" || im != "123456" {
+		t.Fatalf("ResolveOfficialQQLogIdentity native QQ = (%q, %q), want original", u, im)
+	}
+}
+
+func TestLogSendToBackendResolvesBoundIdentitiesInExport(t *testing.T) {
+	mockDB := newLogAliasTestDB(t)
+	officialGroupID := "OpenQQ-Group:synthetic-export-grp"
+	legacyGroupID := "QQ-Group:99887766"
+	officialUserID := "OpenQQ:synthetic-user-1"
+	bareUserID := "synthetic-user-1"
+	legacyUserID := "QQ:1120934969"
+	logName := "export-bind-test"
+
+	if !RegisterOfficialQQIdentityAlias(officialGroupID, legacyGroupID) {
+		t.Fatal("failed to register official group alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialGroupID) })
+
+	if !RegisterOfficialQQIdentityAlias(officialUserID, legacyUserID) {
+		t.Fatal("failed to register official user alias")
+	}
+	t.Cleanup(func() { RemoveOfficialQQIdentityAlias(officialUserID) })
+
+	logID, err := service.LogGetOrCreate(mockDB, legacyGroupID, logName)
+	if err != nil {
+		t.Fatalf("LogGetOrCreate failed: %v", err)
+	}
+
+	ctx := &MsgContext{
+		Dice: &Dice{
+			BaseConfig: BaseConfig{DataDir: t.TempDir()},
+			DBOperator: mockDB,
+			Logger:     sealdiceLogger.M(),
+		},
+		EndPoint: &EndPointInfo{EndPointInfoBase: EndPointInfoBase{UserID: officialUserID}},
+	}
+
+	ok := LogAppend(ctx, legacyGroupID, logID, logName, &model.LogOneItem{
+		Nickname:  "Tester",
+		UniformID: officialUserID,
+		IMUserID:  bareUserID,
+		Message:   "binding replacement message line",
+		Time:      1700000000,
+	})
+	if !ok {
+		t.Fatal("LogAppend failed")
+	}
+
+	var capturedBody []byte
+	var capturedUniformID string
+	var serverCalls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverCalls++
+		if r.URL.Path != "/dice/api/log" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if parseErr := r.ParseMultipartForm(10 << 20); parseErr != nil {
+			t.Fatalf("ParseMultipartForm: %v", parseErr)
+		}
+		capturedUniformID = r.FormValue("uniform_id")
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("FormFile failed: %v", err)
+		}
+		defer file.Close()
+		capturedBody, _ = io.ReadAll(file)
+		_, _ = w.Write([]byte(`{"url":"https://example.com/log-replaced"}`))
+	}))
+	defer server.Close()
+
+	oldBackends := BackendUrls
+	BackendUrls = []string{server.URL}
+	t.Cleanup(func() { BackendUrls = oldBackends })
+
+	unofficial, url, notice, err := LogSendToBackend(ctx, officialGroupID, logName)
+	if err != nil {
+		t.Fatalf("LogSendToBackend failed: %v", err)
+	}
+	if unofficial || url != "https://example.com/log-replaced" {
+		t.Fatalf("unexpected result: unofficial=%v, url=%q, notice=%q", unofficial, url, notice)
+	}
+	if capturedUniformID != legacyUserID {
+		t.Fatalf("captured uniform_id = %q, want legacy %q", capturedUniformID, legacyUserID)
+	}
+
+	// Decompress zlib payload
+	zr, err := zlib.NewReader(bytes.NewReader(capturedBody))
+	if err != nil {
+		t.Fatalf("zlib.NewReader failed: %v", err)
+	}
+	uncompressed, err := io.ReadAll(zr)
+	zr.Close()
+	if err != nil {
+		t.Fatalf("read uncompressed data failed: %v", err)
+	}
+
+	// Payload is the zip file (written by formatAndBackup)
+	zipReader, err := zip.NewReader(bytes.NewReader(uncompressed), int64(len(uncompressed)))
+	if err == nil {
+		for _, f := range zipReader.File {
+			rc, openErr := f.Open()
+			if openErr == nil {
+				content, _ := io.ReadAll(rc)
+				rc.Close()
+				contentStr := string(content)
+				if f.Name == "log.txt" {
+					if !strings.Contains(contentStr, "Tester(1120934969)") {
+						t.Fatalf("zip log.txt missing Tester(1120934969): %s", contentStr)
+					}
+					if strings.Contains(contentStr, "synthetic-user-1") {
+						t.Fatalf("zip log.txt still contains synthetic-user-1: %s", contentStr)
+					}
+				}
+				if f.Name == "log.json" {
+					if !strings.Contains(contentStr, `"im_user_id":"1120934969"`) && !strings.Contains(contentStr, `"im_user_id": "1120934969"`) {
+						t.Fatalf("zip log.json missing im_user_id 1120934969: %s", contentStr)
+					}
+					if strings.Contains(contentStr, "synthetic-user-1") {
+						t.Fatalf("zip log.json still contains synthetic-user-1: %s", contentStr)
+					}
+				}
+			}
+		}
+	} else {
+		// Fallback check on raw uncompressed string
+		uncompressedStr := string(uncompressed)
+		if !strings.Contains(uncompressedStr, "1120934969") {
+			t.Fatalf("exported log payload missing resolved QQ 1120934969: %s", uncompressedStr)
+		}
+		if strings.Contains(uncompressedStr, "synthetic-user-1") {
+			t.Fatalf("exported log payload still contains unreplaced OpenID synthetic-user-1: %s", uncompressedStr)
+		}
+	}
+
+	// Verify GetLogTxt also replaces identity
+	txtFile, _, err := GetLogTxt(ctx, officialGroupID, logName, "test-export")
+	if err != nil {
+		t.Fatalf("GetLogTxt failed: %v", err)
+	}
+	defer os.Remove(txtFile)
+	txtContent, err := os.ReadFile(txtFile)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if !strings.Contains(string(txtContent), "Tester(1120934969)") {
+		t.Fatalf("GetLogTxt output missing 'Tester(1120934969)': %s", string(txtContent))
+	}
+	if strings.Contains(string(txtContent), "synthetic-user-1") {
+		t.Fatalf("GetLogTxt output still contains 'synthetic-user-1': %s", string(txtContent))
 	}
 }

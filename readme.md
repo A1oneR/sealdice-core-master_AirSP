@@ -152,6 +152,19 @@
 - 支持生成图片；后端不可用时自动回退为文字。
 - QQ 官方 Bot 场景要求先绑定旧 QQ 身份，避免跨群统计被 OpenID 拆散。
 
+### 仿 QQ 聊天面板与群聊消息交互
+
+- Web 管理面板新增 `QQ 聊天`（`#/qq-chat`）标签页。
+- 侧面标签栏汇聚所有已知群组，支持按群名/群ID模糊搜索、按“全部/官Bot/已开启”分类过滤，并根据最后发言时间智能置顶活跃群。
+- 仿 QQ 气泡聊天视窗：
+  - 群员消息展示在左侧，Bot 消息展示在右侧高亮呈现。
+  - 自动识别官方 QQ Bot 身份并提取用户 ID 后四位，显示为 `昵称 (后四位)` 与 `#后四位` 专属标签，便于匿名环境下快速识别群员。
+  - 支持查看 Bot 发送的所有指令回复、暗骰播报及系统消息。
+  - 支持消息时间分割线、富文本表情、图片预览与 @ 提及高亮。
+- 纯净消息发送：
+  - 底部提供多行消息输入栏，支持 `Enter` 发送与 `Ctrl+Enter` 换行。
+  - 借用底层群发送通道，**完全不包含任何“本消息由骰主发送”等提示前缀或额外标识**，仅投递用户输入的纯文本内容。
+
 ## 核心配置
 
 | 配置项 | 默认值 | 用途 |
@@ -168,43 +181,29 @@
 | --- | --- |
 | `dice/platform_adapter_official_qq.go` | QQ 官方 Bot 收发、文件、分页、Markdown、限流和富媒体重试 |
 | `dice/official_qq_identity_alias.go` | 官方身份到旧 QQ/QQ群身份的运行时别名 |
-| `dice/official_qq_identity_migration.go` | 可选的旧身份数据迁移 |
-| `dice/dice_attrs_manager.go` | 原生角色卡绑定继承与身份解析 |
-| `dice/dice_jsvm.go` | 提供给绑定插件的核心 JS 接口 |
-| `data/default/scripts/QQ官方Bot昵称桥接.js` | QQ/QQ群验证、绑定和昵称同步 |
+| `dice/chat_manager.go` | 群聊消息环形缓存、双向时间游标分页、官Bot后四位ID解析、发言人格式化 |
+| `api/chat.go` | 群聊列表（默认过滤未发言空群、分页、惰性统计查询）、历史消息向上分页拉取、群消息发送、安全本地图片静态服务 `/sd-api/chat/image`（防目录穿越与 Token 鉴权） |
+| `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互、群列表范围过滤与分页导航、历史记录向上无跳动加载更多、多格式图片解析（CQ码、海豹[图:]、Markdown）、全功能大图查看器 Lightbox（平移、滚轮缩放、旋转、保存、快捷键） |
+| `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，图片卡片与悬浮缩放提示，全屏毛玻璃大图查看器与浮动工具栏，深度适配 Element Plus 与 Eldritch Study 主题 |
+| `static/frontend/index.html` | 注入全局 `no-referrer` 策略，彻底解决腾讯/QQ 图片 CDN 防盗链 403 拦截问题 |
+| `data/default/scripts/QQ官方Bot昵称桥接.js` | 官方 QQ 身份桥接与绑定验证插件 |
 | `static/frontend` | 编译时嵌入核心的前端静态资源 |
-| `sealdice-core-v161-officialqq.exe` | 当前推荐的压缩构建产物 |
 
-## 构建与验证
+## 当前构建验证
 
-项目使用 Go 1.25.0。Windows 下若系统临时目录没有写权限，可使用项目内缓存：
+通过标准环境构建并压缩后的文件记录：
 
-```powershell
-$buildTmp = (Resolve-Path '.\.gotmp').Path
-$env:TEMP = $buildTmp
-$env:TMP = $buildTmp
-$env:GOCACHE = (Resolve-Path '.\.gocache').Path
-$env:GOTMPDIR = $buildTmp
-
-go test ./dice -count=1
-go build -buildvcs=false -trimpath -ldflags '-s -w' `
-  -o sealdice-core-v161-officialqq.exe .
-```
-
-可选的 UPX 压缩：
-
-```powershell
-upx --best --lzma sealdice-core-v161-officialqq.exe
-upx -t sealdice-core-v161-officialqq.exe
-```
+- 构建命令：`go build -ldflags="-s -w" -o sealdice-core-v161-officialqq.exe`
+- 压缩命令：`upx --best --lzma sealdice-core-v161-officialqq.exe`
+- 压缩验证：`upx -t sealdice-core-v161-officialqq.exe`（[OK]）
 
 最近一次完整验证：
 
-- `go test ./dice -count=1` 通过。
+- `go test ./dice -run TestCleanFaceTypeTags`、`go test ./dice -run TestChatManager` 与 `go test ./api -run TestChatAPI` 全部通过。
 - 构建版本：`1.6.1-dev+AirSP`。
-- UPX 校验通过。
-- 当前可执行文件大小：`21,252,608` 字节。
-- SHA-256：`0DB52E9EC654572969940A7994A9D97D2CC9606649A56209FA8F3B2C894925D3`。
+- UPX 校验通过（`upx -t` [OK]）。
+- 当前压缩可执行文件大小：`21,288,448` 字节。
+- 当前压缩可执行文件 SHA-256：`CD5621C34CA71E903CA539FE7B31DFE9B63D2D10982F6BF594B74CB2DE4F7914`。
 
 ## 后续维护约定
 
