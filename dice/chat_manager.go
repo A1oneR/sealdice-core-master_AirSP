@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -50,9 +51,12 @@ func CleanFaceTypeTags(content string) string {
 	})
 }
 
-// ChatMessage represents a single chat message in a group.
+// ChatMessage represents a single chat message in a group or private session.
 type ChatMessage struct {
 	ID            string `json:"id"`
+	SessionType   string `json:"sessionType"` // "group" or "private"
+	SessionID     string `json:"sessionId"`
+	SessionName   string `json:"sessionName"`
 	GroupID       string `json:"groupId"`
 	GroupName     string `json:"groupName"`
 	SenderID      string `json:"senderId"`
@@ -66,33 +70,75 @@ type ChatMessage struct {
 	RawID         any    `json:"rawId,omitempty"`
 }
 
-// ChatGroupSummary represents group information for the QQ chat sidebar.
+// ChatGroupSummary represents session information for the QQ chat sidebar (group or private).
 type ChatGroupSummary struct {
-	GroupID    string       `json:"groupId"`
-	GroupName  string       `json:"groupName"`
-	Platform   string       `json:"platform"`
-	IsOfficial bool         `json:"isOfficial"`
-	Active     bool         `json:"active"`
-	MemberNum  int64        `json:"memberNum"`
-	LastMsg    *ChatMessage `json:"lastMsg,omitempty"`
-	MsgCount   int          `json:"msgCount"`
-	RecentTime int64        `json:"recentTime"`
+	GroupID      string       `json:"groupId"`
+	GroupName    string       `json:"groupName"`
+	Platform     string       `json:"platform"`
+	IsOfficial   bool         `json:"isOfficial"`
+	Active       bool         `json:"active"`
+	MemberNum    int64        `json:"memberNum"`
+	LastMsg      *ChatMessage `json:"lastMsg,omitempty"`
+	MsgCount     int          `json:"msgCount"`
+	RecentTime   int64        `json:"recentTime"`
+	SessionType  string       `json:"sessionType,omitempty"`
+	SenderSuffix string       `json:"senderSuffix,omitempty"`
 }
 
-// ChatManager manages group message history and formatting.
+// ChatManager manages group and private message history and formatting.
 type ChatManager struct {
 	mu          sync.RWMutex
 	messages    map[string][]*ChatMessage
 	maxPerGroup int
 	d           *Dice
+	db          *ChatDB
 }
 
 func NewChatManager(d *Dice) *ChatManager {
-	return &ChatManager{
+	cm := &ChatManager{
 		messages:    make(map[string][]*ChatMessage),
 		maxPerGroup: 500,
 		d:           d,
 	}
+	if d != nil && d.BaseConfig.DataDir != "" {
+		dbPath := filepath.Join(d.BaseConfig.DataDir, "data-chat.db")
+		if db, err := OpenChatDB(dbPath); err == nil {
+			cm.db = db
+		} else if d.Logger != nil {
+			d.Logger.Errorf("打开聊天数据库失败: %v", err)
+		}
+	}
+	return cm
+}
+
+func (cm *ChatManager) InitDB(dbPath string) error {
+	if cm == nil {
+		return nil
+	}
+	db, err := OpenChatDB(dbPath)
+	if err != nil {
+		return err
+	}
+	cm.mu.Lock()
+	if cm.db != nil {
+		_ = cm.db.Close()
+	}
+	cm.db = db
+	cm.mu.Unlock()
+	return nil
+}
+
+// Close closes the underlying persistent chat database.
+func (cm *ChatManager) Close() error {
+	if cm == nil {
+		return nil
+	}
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if cm.db != nil {
+		return cm.db.Close()
+	}
+	return nil
 }
 
 func generateChatMsgID() string {
@@ -155,21 +201,36 @@ func FormatSenderDisplay(senderID, nickname, groupID string, isBot bool) (displa
 	return name, "", false
 }
 
-// AddIncomingMessage records an incoming group message from a group member.
+// AddIncomingMessage records an incoming message from a group member or private user.
 func (cm *ChatManager) AddIncomingMessage(ctx *MsgContext, msg *Message) *ChatMessage {
-	if cm == nil || msg == nil || msg.GroupID == "" {
+	if cm == nil || msg == nil {
 		return nil
 	}
 
-	groupName := msg.GroupName
-	if groupName == "" && ctx != nil && ctx.Group != nil {
-		groupName = ctx.Group.GroupName
-	}
-	if groupName == "" && cm.d != nil && cm.d.Parent != nil {
-		groupName = cm.d.Parent.TryGetGroupName(msg.GroupID)
+	sessionType := "group"
+	sessionID := msg.GroupID
+	sessionName := msg.GroupName
+
+	if msg.MessageType == "private" || (sessionID == "" && msg.Sender.UserID != "") {
+		sessionType = "private"
+		sessionID = msg.Sender.UserID
+		sessionName = msg.Sender.Nickname
 	}
 
-	display, suffix, isOfficial := FormatSenderDisplay(msg.Sender.UserID, msg.Sender.Nickname, msg.GroupID, false)
+	if sessionID == "" {
+		return nil
+	}
+
+	if sessionType == "group" {
+		if sessionName == "" && ctx != nil && ctx.Group != nil {
+			sessionName = ctx.Group.GroupName
+		}
+		if sessionName == "" && cm.d != nil && cm.d.Parent != nil {
+			sessionName = cm.d.Parent.TryGetGroupName(sessionID)
+		}
+	}
+
+	display, suffix, isOfficial := FormatSenderDisplay(msg.Sender.UserID, msg.Sender.Nickname, sessionID, false)
 
 	t := msg.Time
 	if t <= 0 {
@@ -178,8 +239,11 @@ func (cm *ChatManager) AddIncomingMessage(ctx *MsgContext, msg *Message) *ChatMe
 
 	chatMsg := &ChatMessage{
 		ID:            generateChatMsgID(),
-		GroupID:       msg.GroupID,
-		GroupName:     groupName,
+		SessionType:   sessionType,
+		SessionID:     sessionID,
+		SessionName:   sessionName,
+		GroupID:       sessionID,
+		GroupName:     sessionName,
 		SenderID:      msg.Sender.UserID,
 		SenderName:    msg.Sender.Nickname,
 		SenderDisplay: display,
@@ -192,29 +256,59 @@ func (cm *ChatManager) AddIncomingMessage(ctx *MsgContext, msg *Message) *ChatMe
 	}
 
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	list := cm.messages[msg.GroupID]
+	list := cm.messages[sessionID]
 	if len(list) >= cm.maxPerGroup {
 		list = list[len(list)-cm.maxPerGroup+1:]
 	}
-	cm.messages[msg.GroupID] = append(list, chatMsg)
+	cm.messages[sessionID] = append(list, chatMsg)
+	cm.mu.Unlock()
+
+	if cm.db != nil {
+		_ = cm.db.SaveMessage(chatMsg)
+	}
 
 	return chatMsg
 }
 
-// AddOutgoingMessage records an outgoing message sent by the bot into a group.
+// AddOutgoingMessage records an outgoing message sent by the bot into a group or private chat.
 func (cm *ChatManager) AddOutgoingMessage(ctx *MsgContext, msg *Message) *ChatMessage {
-	if cm == nil || msg == nil || msg.GroupID == "" {
+	if cm == nil || msg == nil {
 		return nil
 	}
 
-	groupName := msg.GroupName
-	if groupName == "" && ctx != nil && ctx.Group != nil {
-		groupName = ctx.Group.GroupName
+	sessionType := "group"
+	sessionID := msg.GroupID
+	sessionName := msg.GroupName
+
+	if msg.MessageType == "private" || (sessionID == "" && ctx != nil && ctx.Player != nil && ctx.Player.UserID != "") {
+		sessionType = "private"
+		if ctx != nil && ctx.Player != nil {
+			sessionID = ctx.Player.UserID
+			sessionName = ctx.Player.Name
+		}
+		if sessionID == "" && msg.TmpUID != "" {
+			sessionID = msg.TmpUID
+		}
 	}
-	if groupName == "" && cm.d != nil && cm.d.Parent != nil {
-		groupName = cm.d.Parent.TryGetGroupName(msg.GroupID)
+
+	if sessionID == "" {
+		return nil
+	}
+
+	if sessionType == "group" {
+		if sessionName == "" && ctx != nil && ctx.Group != nil {
+			sessionName = ctx.Group.GroupName
+		}
+		if sessionName == "" && cm.d != nil && cm.d.Parent != nil {
+			sessionName = cm.d.Parent.TryGetGroupName(sessionID)
+		}
+	}
+	if sessionType == "private" && sessionName == "" {
+		if last := cm.GetLastMessage(sessionID); last != nil && last.SessionName != "" {
+			sessionName = last.SessionName
+		} else {
+			sessionName = sessionID
+		}
 	}
 
 	botName := msg.Sender.Nickname
@@ -235,15 +329,22 @@ func (cm *ChatManager) AddOutgoingMessage(ctx *MsgContext, msg *Message) *ChatMe
 		t = time.Now().Unix()
 	}
 
+	isOfficial := strings.HasPrefix(sessionID, "OpenQQ-Group:") ||
+		strings.HasPrefix(sessionID, "OpenQQ:") ||
+		strings.HasPrefix(sessionID, "OpenQQCH:")
+
 	chatMsg := &ChatMessage{
 		ID:            generateChatMsgID(),
-		GroupID:       msg.GroupID,
-		GroupName:     groupName,
+		SessionType:   sessionType,
+		SessionID:     sessionID,
+		SessionName:   sessionName,
+		GroupID:       sessionID,
+		GroupName:     sessionName,
 		SenderID:      botID,
 		SenderName:    botName,
 		SenderDisplay: botName,
 		SenderSuffix:  "",
-		IsOfficial:    strings.HasPrefix(msg.GroupID, "OpenQQ-Group:"),
+		IsOfficial:    isOfficial,
 		IsBot:         true,
 		Content:       CleanFaceTypeTags(msg.Message),
 		Timestamp:     t,
@@ -251,27 +352,38 @@ func (cm *ChatManager) AddOutgoingMessage(ctx *MsgContext, msg *Message) *ChatMe
 	}
 
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	list := cm.messages[msg.GroupID]
+	list := cm.messages[sessionID]
 	if len(list) >= cm.maxPerGroup {
 		list = list[len(list)-cm.maxPerGroup+1:]
 	}
-	cm.messages[msg.GroupID] = append(list, chatMsg)
+	cm.messages[sessionID] = append(list, chatMsg)
+	cm.mu.Unlock()
+
+	if cm.db != nil {
+		_ = cm.db.SaveMessage(chatMsg)
+	}
 
 	return chatMsg
 }
 
-// GetMessagesPaged retrieves messages for a group with since and before support.
-func (cm *ChatManager) GetMessagesPaged(groupID string, limit int, since int64, before int64) ([]*ChatMessage, bool, int) {
-	if cm == nil {
+// GetMessagesPaged retrieves messages for a session with since and before support.
+func (cm *ChatManager) GetMessagesPaged(sessionID string, limit int, since int64, before int64) ([]*ChatMessage, bool, int) {
+	if cm == nil || sessionID == "" {
 		return []*ChatMessage{}, false, 0
+	}
+
+	if cm.db != nil {
+		msgs, hasMore, total := cm.db.GetMessagesPaged(sessionID, limit, since, before)
+		for _, m := range msgs {
+			m.Content = CleanFaceTypeTags(m.Content)
+		}
+		return msgs, hasMore, total
 	}
 
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	list := cm.messages[groupID]
+	list := cm.messages[sessionID]
 	total := len(list)
 	if total == 0 {
 		return []*ChatMessage{}, false, 0
@@ -303,22 +415,29 @@ func (cm *ChatManager) GetMessagesPaged(groupID string, limit int, since int64, 
 	return res, hasMore, total
 }
 
-// GetMessages retrieves recent messages for a group.
-func (cm *ChatManager) GetMessages(groupID string, limit int, since int64) []*ChatMessage {
-	msgs, _, _ := cm.GetMessagesPaged(groupID, limit, since, 0)
+// GetMessages retrieves recent messages for a session.
+func (cm *ChatManager) GetMessages(sessionID string, limit int, since int64) []*ChatMessage {
+	msgs, _, _ := cm.GetMessagesPaged(sessionID, limit, since, 0)
 	return msgs
 }
 
-// GetLastMessage gets the latest recorded message for a group.
-func (cm *ChatManager) GetLastMessage(groupID string) *ChatMessage {
-	if cm == nil {
+// GetLastMessage gets the latest recorded message for a session.
+func (cm *ChatManager) GetLastMessage(sessionID string) *ChatMessage {
+	if cm == nil || sessionID == "" {
 		return nil
+	}
+
+	if cm.db != nil {
+		if msg := cm.db.GetLastMessage(sessionID); msg != nil {
+			msg.Content = CleanFaceTypeTags(msg.Content)
+			return msg
+		}
 	}
 
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	list := cm.messages[groupID]
+	list := cm.messages[sessionID]
 	if len(list) == 0 {
 		return nil
 	}
@@ -328,26 +447,43 @@ func (cm *ChatManager) GetLastMessage(groupID string) *ChatMessage {
 	return &copyLast
 }
 
-// GetMessageCount gets the count of cached messages for a group.
-func (cm *ChatManager) GetMessageCount(groupID string) int {
-	if cm == nil {
+// GetMessageCount gets the count of messages for a session.
+func (cm *ChatManager) GetMessageCount(sessionID string) int {
+	if cm == nil || sessionID == "" {
 		return 0
+	}
+
+	if cm.db != nil {
+		if cnt := cm.db.GetMessageCount(sessionID); cnt > 0 {
+			return cnt
+		}
 	}
 
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	return len(cm.messages[groupID])
+	return len(cm.messages[sessionID])
 }
 
-// ClearMessages removes message history for a group.
-func (cm *ChatManager) ClearMessages(groupID string) {
-	if cm == nil {
+// ClearMessages removes message history for a session.
+func (cm *ChatManager) ClearMessages(sessionID string) {
+	if cm == nil || sessionID == "" {
 		return
 	}
 
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
+	delete(cm.messages, sessionID)
+	cm.mu.Unlock()
 
-	delete(cm.messages, groupID)
+	if cm.db != nil {
+		_ = cm.db.ClearSession(sessionID)
+	}
+}
+
+// GetSessions returns recent session summaries from DB for the specified sessionType.
+func (cm *ChatManager) GetSessions(sessionType string, limit, offset int, search string) ([]*ChatGroupSummary, int, error) {
+	if cm != nil && cm.db != nil {
+		return cm.db.GetRecentSessions(sessionType, limit, offset, search)
+	}
+	return []*ChatGroupSummary{}, 0, nil
 }

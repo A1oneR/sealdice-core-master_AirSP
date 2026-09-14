@@ -16,13 +16,61 @@ import (
 	"sealdice-core/dice/service"
 )
 
-// chatGroupList returns the list of groups for the chat sidebar.
+// chatGroupList returns the list of groups or private sessions for the chat sidebar.
 func chatGroupList(c echo.Context) error {
 	if !doAuth(c) {
 		return c.JSON(http.StatusForbidden, nil)
 	}
 
+	sessionType := strings.TrimSpace(c.QueryParam("sessionType"))
+	if sessionType == "" {
+		sessionType = "group"
+	}
+
 	cm := myDice.GetChatManager()
+
+	page := 1
+	if p := c.QueryParam("page"); p != "" {
+		if val, err := strconv.Atoi(p); err == nil && val > 0 {
+			page = val
+		}
+	}
+
+	pageSize := 20
+	if ps := c.QueryParam("pageSize"); ps != "" {
+		if val, err := strconv.Atoi(ps); err == nil {
+			pageSize = val
+		}
+	}
+
+	search := strings.TrimSpace(c.QueryParam("search"))
+
+	// Handle private sessions list directly from ChatManager/ChatDB
+	if sessionType == "private" {
+		if pageSize <= 0 {
+			pageSize = 50
+		}
+		offset := (page - 1) * pageSize
+		items, total, err := cm.GetSessions("private", pageSize, offset, search)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		totalPages := (total + pageSize - 1) / pageSize
+		if totalPages == 0 {
+			totalPages = 1
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"items":       items,
+			"total":       total,
+			"page":        page,
+			"pageSize":    pageSize,
+			"totalPages":  totalPages,
+			"sessionType": "private",
+		})
+	}
+
 	var summaries []*dice.ChatGroupSummary
 
 	// Default to filtering out groups with no messages
@@ -60,6 +108,10 @@ func chatGroupList(c echo.Context) error {
 				name = groupID
 			}
 
+			if search != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(search)) && !strings.Contains(strings.ToLower(groupID), strings.ToLower(search)) {
+				return true
+			}
+
 			isOfficial := strings.HasPrefix(groupID, "OpenQQ-Group:") || strings.HasPrefix(groupID, "OpenQQCH-Channel:")
 			platform := "QQ"
 			if isOfficial {
@@ -79,15 +131,16 @@ func chatGroupList(c echo.Context) error {
 			}
 
 			summary := &dice.ChatGroupSummary{
-				GroupID:    groupID,
-				GroupName:  name,
-				Platform:   platform,
-				IsOfficial: isOfficial,
-				Active:     active,
-				MemberNum:  0, // lazy load only for paginated slice below
-				LastMsg:    lastMsg,
-				MsgCount:   msgCount,
-				RecentTime: recentTime,
+				GroupID:     groupID,
+				GroupName:   name,
+				Platform:    platform,
+				IsOfficial:  isOfficial,
+				Active:      active,
+				MemberNum:   0, // lazy load only for paginated slice below
+				LastMsg:     lastMsg,
+				MsgCount:    msgCount,
+				RecentTime:  recentTime,
+				SessionType: "group",
 			}
 			summaries = append(summaries, summary)
 			return true
@@ -106,19 +159,6 @@ func chatGroupList(c echo.Context) error {
 	})
 
 	total := len(summaries)
-	page := 1
-	if p := c.QueryParam("page"); p != "" {
-		if val, err := strconv.Atoi(p); err == nil && val > 0 {
-			page = val
-		}
-	}
-
-	pageSize := 20
-	if ps := c.QueryParam("pageSize"); ps != "" {
-		if val, err := strconv.Atoi(ps); err == nil {
-			pageSize = val
-		}
-	}
 
 	var paged []*dice.ChatGroupSummary
 	var totalPages int
@@ -161,19 +201,26 @@ func chatGroupList(c echo.Context) error {
 		"pageSize":        pageSize,
 		"totalPages":      totalPages,
 		"hasMessagesOnly": onlyWithMsgs,
+		"sessionType":     "group",
 	})
 }
 
-// chatMessageList returns recent messages for a specific group.
+// chatMessageList returns recent messages for a specific group or private session.
 func chatMessageList(c echo.Context) error {
 	if !doAuth(c) {
 		return c.JSON(http.StatusForbidden, nil)
 	}
 
-	groupID := strings.TrimSpace(c.QueryParam("groupId"))
-	if groupID == "" {
+	sessionID := strings.TrimSpace(c.QueryParam("sessionId"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.QueryParam("groupId"))
+	}
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.QueryParam("targetId"))
+	}
+	if sessionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "groupId is required",
+			"error": "groupId or targetId is required",
 		})
 	}
 
@@ -202,7 +249,7 @@ func chatMessageList(c echo.Context) error {
 		}
 	}
 
-	messages, hasMore, total := myDice.GetChatManager().GetMessagesPaged(groupID, limit, since, before)
+	messages, hasMore, total := myDice.GetChatManager().GetMessagesPaged(sessionID, limit, since, before)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"messages": messages,
 		"hasMore":  hasMore,
@@ -210,7 +257,7 @@ func chatMessageList(c echo.Context) error {
 	})
 }
 
-// chatMessageSend handles sending pure messages to a group without extra markers.
+// chatMessageSend handles sending pure messages to a group or private session without extra markers.
 func chatMessageSend(c echo.Context) (err error) {
 	if !doAuth(c) {
 		return c.JSON(http.StatusForbidden, nil)
@@ -228,16 +275,11 @@ func chatMessageSend(c echo.Context) (err error) {
 		}
 	}()
 
-	if dm != nil && dm.JustForTest {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"testMode": true,
-			"ok":       true,
-		})
-	}
-
 	v := struct {
-		GroupID string `json:"groupId"`
-		Message string `json:"message"`
+		GroupID     string `json:"groupId"`
+		TargetID    string `json:"targetId"`
+		SessionType string `json:"sessionType"` // "group" or "private"
+		Message     string `json:"message"`
 	}{}
 	if bindErr := c.Bind(&v); bindErr != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -245,22 +287,129 @@ func chatMessageSend(c echo.Context) (err error) {
 		})
 	}
 
-	v.GroupID = strings.TrimSpace(v.GroupID)
-	v.Message = strings.TrimSpace(v.Message)
+	targetID := strings.TrimSpace(v.TargetID)
+	if targetID == "" {
+		targetID = strings.TrimSpace(v.GroupID)
+	}
+	message := strings.TrimSpace(v.Message)
 
-	if v.GroupID == "" || v.Message == "" {
+	if targetID == "" || message == "" {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "群组ID和消息内容不能为空",
+			"error": "目标ID和消息内容不能为空",
 		})
 	}
 
-	if myDice == nil || myDice.ImSession == nil || myDice.ImSession.ServiceAtNew == nil {
+	if dm != nil && dm.JustForTest {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"testMode": true,
+			"ok":       true,
+		})
+	}
+
+	sessionType := strings.TrimSpace(v.SessionType)
+	if sessionType == "" {
+		if strings.HasPrefix(targetID, "OpenQQ:") || strings.HasPrefix(targetID, "QQ:") {
+			sessionType = "private"
+		} else {
+			sessionType = "group"
+		}
+	}
+
+	if myDice == nil || myDice.ImSession == nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error": "核心会话未就绪",
 		})
 	}
 
-	group, exists := myDice.ImSession.ServiceAtNew.Load(v.GroupID)
+	isEpUsable := func(ep *dice.EndPointInfo) bool {
+		return ep != nil && ep.Enable && ep.State == dice.StateConnected && ep.Adapter != nil
+	}
+
+	// Handle private message sending
+	if sessionType == "private" {
+		var targetEP *dice.EndPointInfo
+		isOfficial := strings.HasPrefix(targetID, "OpenQQ:") || strings.HasPrefix(targetID, "OpenQQCH:")
+		for _, ep := range myDice.ImSession.EndPoints {
+			if isEpUsable(ep) {
+				if isOfficial && ep.Platform == "OpenQQ" {
+					targetEP = ep
+					break
+				}
+				if !isOfficial && ep.Platform == "QQ" {
+					targetEP = ep
+					break
+				}
+			}
+		}
+		if targetEP == nil {
+			for _, ep := range myDice.ImSession.EndPoints {
+				if isEpUsable(ep) {
+					targetEP = ep
+					break
+				}
+			}
+		}
+		if targetEP == nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				"error": "没有在线连接的机器人端点，无法发送消息，请先在连接管理中连接机器人",
+			})
+		}
+
+		partnerName := targetID
+		if lastMsg := myDice.GetChatManager().GetLastMessage(targetID); lastMsg != nil && lastMsg.SessionName != "" {
+			partnerName = lastMsg.SessionName
+		}
+
+		ctx := &dice.MsgContext{
+			Dice:           myDice,
+			EndPoint:       targetEP,
+			Session:        myDice.ImSession,
+			MessageType:    "private",
+			PrivilegeLevel: 100,
+			Player: &dice.GroupPlayerInfo{
+				Name:   partnerName,
+				UserID: targetID,
+			},
+		}
+
+		// For Official QQ C2C, use passive reply if recent message from user within 5 minutes
+		if isOfficial {
+			lastMsg := myDice.GetChatManager().GetLastMessage(targetID)
+			if lastMsg != nil && !lastMsg.IsBot && lastMsg.RawID != nil {
+				rawIDStr := fmt.Sprint(lastMsg.RawID)
+				if rawIDStr != "" && time.Now().Unix()-lastMsg.Timestamp < 300 {
+					dice.VarSetValueStr(ctx, "$tMsgID", rawIDStr)
+				}
+			}
+		}
+
+		sendMsg := &dice.Message{
+			Time:        time.Now().Unix(),
+			MessageType: "private",
+			Platform:    targetEP.Platform,
+			Sender: dice.SenderBase{
+				UserID:   targetID,
+				Nickname: partnerName,
+			},
+			Message: message,
+		}
+
+		dice.ReplyPerson(ctx, sendMsg, message)
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"ok":      true,
+			"message": "发送成功",
+		})
+	}
+
+	// Group message sending
+	if myDice.ImSession.ServiceAtNew == nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "核心会话未就绪",
+		})
+	}
+
+	group, exists := myDice.ImSession.ServiceAtNew.Load(targetID)
 	if !exists {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error": "未找到对应的群组信息",
@@ -268,11 +417,6 @@ func chatMessageSend(c echo.Context) (err error) {
 	}
 
 	var targetEP *dice.EndPointInfo
-
-	// Helper to check if an endpoint is alive, connected, and has an active adapter
-	isEpUsable := func(ep *dice.EndPointInfo) bool {
-		return ep != nil && ep.Enable && ep.State == dice.StateConnected && ep.Adapter != nil
-	}
 
 	// 1. Check endpoints active/present in this group that are connected
 	if group.DiceIDActiveMap != nil {
@@ -305,7 +449,7 @@ func chatMessageSend(c echo.Context) (err error) {
 
 	// 2. Fallback matching platform prefix
 	if targetEP == nil {
-		isOfficial := strings.HasPrefix(v.GroupID, "OpenQQ-Group:") || strings.HasPrefix(v.GroupID, "OpenQQCH-Channel:")
+		isOfficial := strings.HasPrefix(targetID, "OpenQQ-Group:") || strings.HasPrefix(targetID, "OpenQQCH-Channel:")
 		for _, ep := range myDice.ImSession.EndPoints {
 			if isEpUsable(ep) {
 				if isOfficial && ep.Platform == "OpenQQ" {
@@ -355,8 +499,8 @@ func chatMessageSend(c echo.Context) (err error) {
 	// For Official QQ, if there is a recent member message within 5 minutes (300s),
 	// set $tMsgID so Official QQ platform uses passive reply (被动回复),
 	// which is exempt from proactive monthly quota limits and group-owner toggle restriction.
-	if strings.HasPrefix(v.GroupID, "OpenQQ-Group:") || strings.HasPrefix(v.GroupID, "OpenQQCH-Channel:") {
-		lastMsg := myDice.GetChatManager().GetLastMessage(v.GroupID)
+	if strings.HasPrefix(targetID, "OpenQQ-Group:") || strings.HasPrefix(targetID, "OpenQQCH-Channel:") {
+		lastMsg := myDice.GetChatManager().GetLastMessage(targetID)
 		if lastMsg != nil && !lastMsg.IsBot && lastMsg.RawID != nil {
 			rawIDStr := fmt.Sprint(lastMsg.RawID)
 			if rawIDStr != "" && time.Now().Unix()-lastMsg.Timestamp < 300 {
@@ -369,16 +513,16 @@ func chatMessageSend(c echo.Context) (err error) {
 		Time:        time.Now().Unix(),
 		MessageType: "group",
 		Platform:    targetEP.Platform,
-		GroupID:     v.GroupID,
+		GroupID:     targetID,
 		Sender: dice.SenderBase{
 			UserID:   masterID,
 			Nickname: masterName,
 		},
-		Message: v.Message,
+		Message: message,
 	}
 
 	// Send message directly to group without any extra markers
-	dice.ReplyGroup(ctx, sendMsg, v.Message)
+	dice.ReplyGroup(ctx, sendMsg, message)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"ok":      true,
@@ -386,14 +530,15 @@ func chatMessageSend(c echo.Context) (err error) {
 	})
 }
 
-// chatMessageClear clears cached chat messages for a group.
+// chatMessageClear clears cached chat messages for a group or private session.
 func chatMessageClear(c echo.Context) error {
 	if !doAuth(c) {
 		return c.JSON(http.StatusForbidden, nil)
 	}
 
 	v := struct {
-		GroupID string `json:"groupId"`
+		GroupID  string `json:"groupId"`
+		TargetID string `json:"targetId"`
 	}{}
 	if err := c.Bind(&v); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -401,14 +546,17 @@ func chatMessageClear(c echo.Context) error {
 		})
 	}
 
-	v.GroupID = strings.TrimSpace(v.GroupID)
-	if v.GroupID == "" {
+	sessionID := strings.TrimSpace(v.TargetID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(v.GroupID)
+	}
+	if sessionID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"error": "groupId 不能为空",
+			"error": "groupId 或 targetId 不能为空",
 		})
 	}
 
-	myDice.GetChatManager().ClearMessages(v.GroupID)
+	myDice.GetChatManager().ClearMessages(sessionID)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"ok": true,
 	})

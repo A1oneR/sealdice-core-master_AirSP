@@ -43,6 +43,45 @@
   height: 100%;
 }
 
+.qq-chat-type-switcher {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f2;
+}
+
+.qq-chat-type-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+  background: #f5f7fa;
+  color: #606266;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.qq-chat-type-btn:hover {
+  background: #eef2f8;
+  color: #0099ff;
+  border-color: #b3d8ff;
+}
+
+.qq-chat-type-btn.active {
+  background: #0099ff;
+  color: #ffffff;
+  border-color: #0099ff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 153, 255, 0.25);
+}
+
 .qq-chat-search-wrap {
   display: flex;
   align-items: center;
@@ -348,6 +387,12 @@
   background: #e6f7ff;
   color: #0070cc;
   border: 1px solid #91d5ff;
+}
+
+.qq-chat-badge-private {
+  background: #f0f5ff;
+  color: #2f54eb;
+  border: 1px solid #adc6ff;
 }
 
 .qq-chat-badge-status-on {
@@ -906,10 +951,34 @@
   border-right-color: rgba(185, 151, 88, 0.25) !important;
 }
 
+.eldritch-study .qq-chat-type-switcher,
 .eldritch-study .qq-chat-search-wrap,
 .eldritch-study .qq-chat-filter-tabs {
   background: rgba(16, 10, 7, 0.7) !important;
   border-bottom-color: rgba(185, 151, 88, 0.2) !important;
+}
+
+.eldritch-study .qq-chat-type-btn {
+  background: rgba(35, 23, 16, 0.8) !important;
+  border-color: rgba(185, 151, 88, 0.3) !important;
+  color: #c7b995 !important;
+}
+
+.eldritch-study .qq-chat-type-btn:hover {
+  border-color: #d4af37 !important;
+  color: #f0ddaa !important;
+}
+
+.eldritch-study .qq-chat-type-btn.active {
+  background: linear-gradient(90deg, #7c622b, #b38b39) !important;
+  border-color: #d4af37 !important;
+  color: #fff9e6 !important;
+}
+
+.eldritch-study .qq-chat-badge-private {
+  background: rgba(185, 151, 88, 0.15) !important;
+  color: #d4af37 !important;
+  border-color: rgba(212, 175, 55, 0.35) !important;
 }
 
 .eldritch-study .qq-chat-search-input {

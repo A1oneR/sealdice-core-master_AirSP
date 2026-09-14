@@ -313,3 +313,82 @@ func TestCleanFaceTypeTags(t *testing.T) {
 		})
 	}
 }
+
+func TestChatManagerPrivateMessages(t *testing.T) {
+	d := &Dice{}
+	cm := NewChatManager(d)
+	_ = cm.InitDB(":memory:")
+	defer cm.Close()
+
+	userID := "OpenQQ:user123-9999"
+	// 1. Incoming private message
+	inMsg := cm.AddIncomingMessage(nil, &Message{
+		MessageType: "private",
+		Message:     "你好骰娘",
+		Time:        1000,
+		Sender: SenderBase{
+			UserID:   userID,
+			Nickname: "测试玩家",
+		},
+	})
+
+	if inMsg == nil {
+		t.Fatal("AddIncomingMessage returned nil")
+	}
+	if inMsg.SessionType != "private" {
+		t.Errorf("SessionType = %s, want private", inMsg.SessionType)
+	}
+	if inMsg.SessionID != userID {
+		t.Errorf("SessionID = %s, want %s", inMsg.SessionID, userID)
+	}
+	if inMsg.SenderSuffix != "9999" {
+		t.Errorf("SenderSuffix = %s, want 9999", inMsg.SenderSuffix)
+	}
+
+	// 2. Outgoing private message
+	ctx := &MsgContext{
+		Player: &GroupPlayerInfo{
+			UserID: userID,
+			Name:   "测试玩家",
+		},
+		EndPoint: &EndPointInfo{
+			EndPointInfoBase: EndPointInfoBase{
+				UserID:   "OpenQQ:bot",
+				Nickname: "小海豹",
+			},
+		},
+	}
+	outMsg := cm.AddOutgoingMessage(ctx, &Message{
+		MessageType: "private",
+		Message:     "你好呀！",
+		Time:        1005,
+		Sender: SenderBase{
+			UserID:   "OpenQQ:bot",
+			Nickname: "小海豹",
+		},
+	})
+	if outMsg == nil {
+		t.Fatal("AddOutgoingMessage returned nil")
+	}
+	if outMsg.SessionType != "private" || outMsg.SessionID != userID {
+		t.Errorf("unexpected outMsg: %+v", outMsg)
+	}
+
+	// 3. Query messages and sessions
+	msgs, _, total := cm.GetMessagesPaged(userID, 10, 0, 0)
+	if total != 2 || len(msgs) != 2 {
+		t.Fatalf("total=%d, len=%d, want 2", total, len(msgs))
+	}
+	if msgs[0].Content != "你好骰娘" || msgs[1].Content != "你好呀！" {
+		t.Fatalf("unexpected msgs: %v, %v", msgs[0].Content, msgs[1].Content)
+	}
+
+	sessions, totalSessions, err := cm.GetSessions("private", 10, 0, "")
+	if err != nil || totalSessions != 1 || len(sessions) != 1 {
+		t.Fatalf("GetSessions failed: %v (total=%d, len=%d)", err, totalSessions, len(sessions))
+	}
+	if sessions[0].GroupID != userID || sessions[0].SenderSuffix != "9999" {
+		t.Errorf("unexpected session: %+v", sessions[0])
+	}
+}
+

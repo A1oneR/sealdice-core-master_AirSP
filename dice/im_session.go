@@ -970,7 +970,7 @@ func (s *IMSession) Execute(ep *EndPointInfo, msg *Message, runInSync bool) {
 		VarSetValueStr(mctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
 		mctx.IsCurGroupBotOn = msg.MessageType == "group" && mctx.Group.IsActive(mctx)
 
-		if msg.MessageType == "group" {
+		if msg.MessageType == "group" || msg.MessageType == "private" {
 			d.GetChatManager().AddIncomingMessage(mctx, msg)
 		}
 
@@ -1351,7 +1351,7 @@ func (s *IMSession) ExecuteNew(ep *EndPointInfo, msg *Message) {
 	VarSetValueStr(mctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
 	mctx.IsCurGroupBotOn = msg.MessageType == "group" && mctx.Group.IsActive(mctx)
 
-	if msg.MessageType == "group" {
+	if msg.MessageType == "group" || msg.MessageType == "private" {
 		d.GetChatManager().AddIncomingMessage(mctx, msg)
 	}
 
@@ -2369,7 +2369,7 @@ func (s *IMSession) OnMessageDeleted(mctx *MsgContext, msg *Message) {
 }
 
 func (s *IMSession) OnMessageSend(ctx *MsgContext, msg *Message, flag string) {
-	if s.Parent != nil && msg != nil && (msg.MessageType == "group" || msg.GroupID != "") {
+	if s.Parent != nil && msg != nil && (msg.MessageType == "group" || msg.GroupID != "" || msg.MessageType == "private") {
 		s.Parent.GetChatManager().AddOutgoingMessage(ctx, msg)
 	}
 	for _, i := range s.Parent.ExtList {

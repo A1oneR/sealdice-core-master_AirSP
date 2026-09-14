@@ -85,6 +85,7 @@ var DefaultConfig = Config{
 	StoryLogConfig{
 		LogSizeNoticeEnable: true,
 		LogSizeNoticeCount:  500,
+		LogCleanRichText:    true,
 	},
 	MailConfig{
 		MailEnable:   false,

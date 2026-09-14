@@ -1121,6 +1121,15 @@ func FilenameReplace(name string) string {
 }
 
 func LogAppend(ctx *MsgContext, groupID string, logID uint64, logName string, logItem *model.LogOneItem) bool {
+	if logItem != nil {
+		shouldClean := true
+		if ctx != nil && ctx.Dice != nil {
+			shouldClean = ctx.Dice.Config.LogCleanRichText
+		}
+		if shouldClean {
+			logItem.Message = CleanLogMessage(logItem.Message)
+		}
+	}
 	routeGroupID := groupID
 	groupID = resolveLogStorageGroupID(groupID)
 	ok := false

@@ -223,6 +223,7 @@ type JsConfig struct {
 type StoryLogConfig struct {
 	LogSizeNoticeEnable bool `json:"logSizeNoticeEnable" yaml:"logSizeNoticeEnable"` // 开启日志数量提示
 	LogSizeNoticeCount  int  `json:"logSizeNoticeCount"  yaml:"LogSizeNoticeCount"`  // 日志数量提示阈值，默认500
+	LogCleanRichText    bool `json:"logCleanRichText"    yaml:"logCleanRichText"`    // 开启日志富文本/KaTeX代码过滤，净化回放日志
 }
 
 type MailConfig struct {

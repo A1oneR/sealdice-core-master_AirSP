@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"sealdice-core/dice"
 )
@@ -276,3 +278,68 @@ func TestChatAPIImageGet(t *testing.T) {
 		t.Fatalf("expected 404 on non-existent file, got %d", rec404.Code)
 	}
 }
+
+func TestChatAPIPrivateChat(t *testing.T) {
+	token, testDice := setupTestChatAPI(t)
+	_ = testDice.ChatManager.InitDB(":memory:")
+	defer testDice.ChatManager.Close()
+
+	userID := "OpenQQ:friend1-8888"
+	// 1. Add private message
+	testDice.ChatManager.AddIncomingMessage(nil, &dice.Message{
+		MessageType: "private",
+		Message:     "私聊测试",
+		Time:        time.Now().Unix(),
+		Sender: dice.SenderBase{
+			UserID:   userID,
+			Nickname: "测试好友",
+		},
+	})
+
+	// 2. Query private sessions via API
+	recPrivate := performReplyAPIRequest(t, http.MethodGet, "/sd-api/chat/groups?sessionType=private", "", token, chatGroupList)
+	if recPrivate.Code != http.StatusOK {
+		t.Fatalf("expected 200 on private groups query, got %d", recPrivate.Code)
+	}
+	var resp struct {
+		Items []struct {
+			GroupID      string `json:"groupId"`
+			GroupName    string `json:"groupName"`
+			SenderSuffix string `json:"senderSuffix"`
+		} `json:"items"`
+		Total       int    `json:"total"`
+		SessionType string `json:"sessionType"`
+	}
+	if err := json.Unmarshal(recPrivate.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if resp.Total != 1 || len(resp.Items) != 1 {
+		t.Fatalf("expected 1 private session, got total=%d len=%d", resp.Total, len(resp.Items))
+	}
+	if resp.Items[0].GroupID != userID || resp.Items[0].SenderSuffix != "8888" {
+		t.Errorf("unexpected private item: %+v", resp.Items[0])
+	}
+
+	// 3. Query private messages via API
+	recMsgs := performReplyAPIRequest(t, http.MethodGet, "/sd-api/chat/messages?targetId="+userID, "", token, chatMessageList)
+	if recMsgs.Code != http.StatusOK {
+		t.Fatalf("expected 200 on private messages query, got %d", recMsgs.Code)
+	}
+
+	// 4. Send private message in test mode
+	dm.JustForTest = true
+	recSend := performReplyAPIRequest(t, http.MethodPost, "/sd-api/chat/send", fmt.Sprintf(`{"targetId":"%s","sessionType":"private","message":"回复好友"}`, userID), token, chatMessageSend)
+	if recSend.Code != http.StatusOK {
+		t.Fatalf("expected 200 on private send, got %d", recSend.Code)
+	}
+
+	// 5. Clear private messages via API
+	recClear := performReplyAPIRequest(t, http.MethodPost, "/sd-api/chat/clear", fmt.Sprintf(`{"targetId":"%s"}`, userID), token, chatMessageClear)
+	if recClear.Code != http.StatusOK {
+		t.Fatalf("expected 200 on private clear, got %d", recClear.Code)
+	}
+	if testDice.ChatManager.GetMessageCount(userID) != 0 {
+		t.Fatal("expected 0 messages after clear")
+	}
+}
+

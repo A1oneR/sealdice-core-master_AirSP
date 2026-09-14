@@ -1,24 +1,30 @@
 (function () {
   const CHAT_ROUTE = "/qq-chat";
   let pollTimer = null;
+  let currentSessionType = sessionStorage.getItem("qq_chat_session_type") || "group";
   let currentGroupId = sessionStorage.getItem("qq_chat_current_group") || "";
-  let groupsCache = [];
+  let currentPrivateId = sessionStorage.getItem("qq_chat_current_private") || "";
+  let sessionsCache = [];
   let currentFilter = "all";
   let searchQuery = "";
   let autoScroll = true;
   let isSending = false;
-  let groupPage = 1;
-  let groupPageSize = 20;
-  let groupTotalPages = 1;
-  let groupTotal = 0;
+  let sessionPage = 1;
+  let sessionPageSize = 20;
+  let sessionTotalPages = 1;
+  let sessionTotal = 0;
   let onlyWithMsgs = true;
   let messagesLimit = 35;
   let currentOldestTimestamp = 0;
   let hasMoreHistory = false;
   let isLoadingHistory = false;
-  const knownGroupsMap = new Map();
+  const knownSessionsMap = new Map();
   let lastRenderedSignature = "";
   let isChatRouteActive = false;
+
+  function getCurrentActiveId() {
+    return currentSessionType === "private" ? currentPrivateId : currentGroupId;
+  }
 
   function getToken() {
     return localStorage.getItem("t") || "";
@@ -104,10 +110,10 @@
     return colors[Math.abs(hash) % colors.length];
   }
 
-  function getInitials(name) {
-    if (!name) return "群";
+  function getInitials(name, defaultChar = "群") {
+    if (!name) return defaultChar;
     const clean = name.replace(/^[\[\(（【]/, "").trim();
-    return clean ? clean.slice(0, 1) : "群";
+    return clean ? clean.slice(0, 1) : defaultChar;
   }
 
   function unescapeCQ(val) {
@@ -673,25 +679,33 @@
     view.innerHTML = `
       <!-- Left: Sidebar -->
       <aside class="qq-chat-sidebar">
-        <div class="qq-chat-search-wrap">
-          <input type="text" class="qq-chat-search-input" placeholder="搜索群聊名称 / ID..." />
-          <button type="button" class="qq-chat-icon-btn qq-chat-refresh-groups-btn" title="刷新群列表">&#x21bb;</button>
+        <div class="qq-chat-type-switcher">
+          <button type="button" class="qq-chat-type-btn ${currentSessionType === 'group' ? 'active' : ''}" data-type="group">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>群聊
+          </button>
+          <button type="button" class="qq-chat-type-btn ${currentSessionType === 'private' ? 'active' : ''}" data-type="private">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align: -2px; margin-right: 4px;"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>私聊
+          </button>
         </div>
-        <div class="qq-chat-scope-tabs">
+        <div class="qq-chat-search-wrap">
+          <input type="text" class="qq-chat-search-input" placeholder="${currentSessionType === 'private' ? '搜索私聊用户 / ID...' : '搜索群聊名称 / ID...'}" />
+          <button type="button" class="qq-chat-icon-btn qq-chat-refresh-groups-btn" title="刷新列表">&#x21bb;</button>
+        </div>
+        <div class="qq-chat-scope-tabs" style="${currentSessionType === 'private' ? 'display:none;' : ''}">
           <button type="button" class="qq-chat-scope-tab active" data-scope="active">仅看有发言群</button>
           <button type="button" class="qq-chat-scope-tab" data-scope="all">全部群聊</button>
         </div>
         <div class="qq-chat-filter-tabs">
           <button type="button" class="qq-chat-filter-tab active" data-filter="all">全部</button>
           <button type="button" class="qq-chat-filter-tab" data-filter="official">官Bot</button>
-          <button type="button" class="qq-chat-filter-tab" data-filter="active">已开启</button>
+          <button type="button" class="qq-chat-filter-tab qq-chat-filter-tab-active" data-filter="active" style="${currentSessionType === 'private' ? 'display:none;' : ''}">已开启</button>
         </div>
         <div class="qq-chat-group-list">
-          <div class="qq-chat-empty-hint">正在加载群聊...</div>
+          <div class="qq-chat-empty-hint">${currentSessionType === 'private' ? '正在加载私聊...' : '正在加载群聊...'}</div>
         </div>
         <div class="qq-chat-pagination-bar">
           <button type="button" class="qq-chat-page-btn qq-chat-page-prev" disabled>上一页</button>
-          <span class="qq-chat-page-indicator">1 / 1 (0群)</span>
+          <span class="qq-chat-page-indicator">1 / 1 (0项)</span>
           <button type="button" class="qq-chat-page-btn qq-chat-page-next" disabled>下一页</button>
         </div>
       </aside>
@@ -703,13 +717,14 @@
             <div class="qq-chat-header-avatar" style="display:none;"></div>
             <div>
               <div class="qq-chat-header-title-row">
-                <span class="qq-chat-header-title">请选择左侧群聊</span>
+                <span class="qq-chat-header-title">请选择左侧会话</span>
+                <span class="qq-chat-badge qq-chat-badge-type" style="display:none;">私聊</span>
                 <span class="qq-chat-badge qq-chat-badge-official" style="display:none;">官Bot</span>
                 <span class="qq-chat-badge qq-chat-badge-status" style="display:none;"></span>
               </div>
               <div class="qq-chat-header-subtitle">
                 <span class="qq-chat-header-id"></span>
-                <button type="button" class="qq-chat-copy-id-btn" style="display:none;" title="复制群ID">复制</button>
+                <button type="button" class="qq-chat-copy-id-btn" style="display:none;" title="复制ID">复制</button>
                 <span class="qq-chat-header-members"></span>
               </div>
             </div>
@@ -725,7 +740,7 @@
 
         <div class="qq-chat-messages-container">
           <div class="qq-chat-messages-stream">
-            <div class="qq-chat-empty-hint">请从左侧选择群聊开始查看消息</div>
+            <div class="qq-chat-empty-hint">请从左侧选择会话开始查看消息</div>
           </div>
         </div>
 
@@ -738,7 +753,7 @@
             <span class="qq-chat-char-counter">0/1000</span>
           </div>
           <div class="qq-chat-input-box">
-            <textarea class="qq-chat-textarea" placeholder="输入要发送到群聊的信息... (Enter 发送, Ctrl+Enter 换行)" rows="2" maxlength="1000"></textarea>
+            <textarea class="qq-chat-textarea" placeholder="${currentSessionType === 'private' ? '输入要发送给私聊用户的信息... (Enter 发送, Ctrl+Enter 换行)' : '输入要发送到群聊的信息... (Enter 发送, Ctrl+Enter 换行)'}" rows="2" maxlength="1000"></textarea>
             <button type="button" class="qq-chat-send-btn" disabled>
               <span>发送</span>
               <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -753,16 +768,81 @@
     return view;
   }
 
+  function updateSessionTypeUI(view) {
+    if (!view) view = document.getElementById("sealdice-qq-chat-view");
+    if (!view) return;
+    const isPrivate = currentSessionType === "private";
+    const sInput = view.querySelector(".qq-chat-search-input");
+    if (sInput) {
+      sInput.placeholder = isPrivate ? "搜索私聊用户 / ID..." : "搜索群聊名称 / ID...";
+    }
+    const scopeTabs = view.querySelector(".qq-chat-scope-tabs");
+    if (scopeTabs) {
+      scopeTabs.style.display = isPrivate ? "none" : "flex";
+    }
+    const activeFilterTab = view.querySelector(".qq-chat-filter-tab-active");
+    if (activeFilterTab) {
+      activeFilterTab.style.display = isPrivate ? "none" : "";
+    }
+    if (isPrivate && currentFilter === "active") {
+      currentFilter = "all";
+      const filterTabs = view.querySelectorAll(".qq-chat-filter-tab");
+      filterTabs.forEach((t) => {
+        t.classList.toggle("active", t.getAttribute("data-filter") === "all");
+      });
+    }
+    const textarea = view.querySelector(".qq-chat-textarea");
+    if (textarea) {
+      textarea.placeholder = isPrivate
+        ? "输入要发送给私聊用户的信息... (Enter 发送, Ctrl+Enter 换行)"
+        : "输入要发送到群聊的信息... (Enter 发送, Ctrl+Enter 换行)";
+    }
+    const tipText = view.querySelector(".qq-chat-toolbar-tip");
+    if (tipText) {
+      tipText.innerHTML = `
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        ${isPrivate ? "以骰娘身份发送私聊消息 · 纯文本发送无任何额外标识" : "以骰娘身份发送群聊消息 · 纯文本发送无任何额外标识"}
+      `;
+    }
+  }
+
   function bindChatViewEvents(view) {
+    const typeBtns = view.querySelectorAll(".qq-chat-type-btn");
+    typeBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const type = btn.getAttribute("data-type");
+        if (type === currentSessionType) return;
+        currentSessionType = type;
+        sessionStorage.setItem("qq_chat_session_type", type);
+        typeBtns.forEach((b) => b.classList.toggle("active", b.getAttribute("data-type") === type));
+
+        updateSessionTypeUI(view);
+
+        sessionPage = 1;
+        searchQuery = "";
+        const sInput = view.querySelector(".qq-chat-search-input");
+        if (sInput) sInput.value = "";
+        sessionsCache = [];
+
+        const activeId = getCurrentActiveId();
+        if (activeId) {
+          selectSession(activeId, true);
+        } else {
+          resetMainHeader(view);
+        }
+        fetchSessions(false);
+      });
+    });
+
     const searchInput = view.querySelector(".qq-chat-search-input");
     searchInput.addEventListener("input", (e) => {
       searchQuery = e.target.value.trim().toLowerCase();
-      renderGroupList();
+      renderSessionList();
     });
 
     const refreshGroupsBtn = view.querySelector(".qq-chat-refresh-groups-btn");
     refreshGroupsBtn.addEventListener("click", () => {
-      fetchGroups(true);
+      fetchSessions(true);
     });
 
     const groupListEl = view.querySelector(".qq-chat-group-list");
@@ -770,9 +850,9 @@
       groupListEl.addEventListener("click", (e) => {
         const item = e.target.closest(".qq-chat-group-item");
         if (!item) return;
-        const gid = item.getAttribute("data-id");
-        if (gid) {
-          selectGroup(gid, true);
+        const sid = item.getAttribute("data-id");
+        if (sid) {
+          selectSession(sid, true);
         }
       });
     }
@@ -783,7 +863,7 @@
         filterTabs.forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
         currentFilter = tab.getAttribute("data-filter");
-        renderGroupList();
+        renderSessionList();
       });
     });
 
@@ -791,7 +871,9 @@
     copyBtn.addEventListener("click", () => {
       const idText = view.querySelector(".qq-chat-header-id").textContent;
       if (idText && navigator.clipboard) {
-        navigator.clipboard.writeText(idText).then(() => showToast("已复制群号", "success"));
+        navigator.clipboard.writeText(idText).then(() => {
+          showToast(currentSessionType === "private" ? "已复制用户ID" : "已复制群号", "success");
+        });
       }
     });
 
@@ -830,14 +912,19 @@
 
     const refreshMsgBtn = view.querySelector(".qq-chat-btn-refresh");
     refreshMsgBtn.addEventListener("click", () => {
-      if (currentGroupId) fetchMessages(currentGroupId, false);
+      const activeId = getCurrentActiveId();
+      if (activeId) fetchMessages(activeId, false);
     });
 
     const clearMsgBtn = view.querySelector(".qq-chat-btn-clear");
     clearMsgBtn.addEventListener("click", () => {
-      if (!currentGroupId) return;
-      if (confirm("确定要清空此群在面板中的聊天记录吗？（不影响群内消息）")) {
-        clearGroupMessages(currentGroupId);
+      const activeId = getCurrentActiveId();
+      if (!activeId) return;
+      const confirmText = currentSessionType === "private"
+        ? "确定要清空与此用户的私聊本地记录吗？（不影响聊天平台记录）"
+        : "确定要清空此群在面板中的聊天记录吗？（不影响群内消息）";
+      if (confirm(confirmText)) {
+        clearSessionMessages(activeId);
       }
     });
 
@@ -848,7 +935,7 @@
     textarea.addEventListener("input", () => {
       const len = textarea.value.trim().length;
       counter.textContent = `${len}/1000`;
-      sendBtn.disabled = len === 0 || isSending || !currentGroupId;
+      sendBtn.disabled = len === 0 || isSending || !getCurrentActiveId();
     });
 
     textarea.addEventListener("keydown", (e) => {
@@ -864,17 +951,17 @@
         scopeTabs.forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
         onlyWithMsgs = tab.getAttribute("data-scope") === "active";
-        groupPage = 1;
-        fetchGroups(false);
+        sessionPage = 1;
+        fetchSessions(false);
       });
     });
 
     const prevBtn = view.querySelector(".qq-chat-page-prev");
     if (prevBtn) {
       prevBtn.addEventListener("click", () => {
-        if (groupPage > 1) {
-          groupPage--;
-          fetchGroups(false);
+        if (sessionPage > 1) {
+          sessionPage--;
+          fetchSessions(false);
         }
       });
     }
@@ -882,9 +969,9 @@
     const nextBtn = view.querySelector(".qq-chat-page-next");
     if (nextBtn) {
       nextBtn.addEventListener("click", () => {
-        if (groupPage < groupTotalPages) {
-          groupPage++;
-          fetchGroups(false);
+        if (sessionPage < sessionTotalPages) {
+          sessionPage++;
+          fetchSessions(false);
         }
       });
     }
@@ -897,9 +984,15 @@
   // --------------------------------------------------------------------------
   // Data Fetching
   // --------------------------------------------------------------------------
-  async function fetchGroups(showNotice = false) {
+  async function fetchSessions(showNotice = false) {
     try {
-      const url = `/sd-api/chat/groups?page=${groupPage}&pageSize=${groupPageSize}&hasMessagesOnly=${onlyWithMsgs}`;
+      let url = `/sd-api/chat/groups?page=${sessionPage}&pageSize=${sessionPageSize}&sessionType=${currentSessionType}`;
+      if (currentSessionType === "group") {
+        url += `&hasMessagesOnly=${onlyWithMsgs}`;
+      }
+      if (searchQuery) {
+        url += `&search=${encodeURIComponent(searchQuery)}`;
+      }
       const res = await fetch(url, {
         headers: getHeaders(),
       });
@@ -908,26 +1001,29 @@
         return;
       }
       const data = await res.json();
-      groupsCache = data.items || [];
-      groupTotal = data.total || groupsCache.length;
-      groupPage = data.page || 1;
-      groupTotalPages = data.totalPages || 1;
+      sessionsCache = data.items || [];
+      sessionTotal = data.total || sessionsCache.length;
+      sessionPage = data.page || 1;
+      sessionTotalPages = data.totalPages || 1;
 
-      groupsCache.forEach((g) => knownGroupsMap.set(g.groupId, g));
+      sessionsCache.forEach((s) => knownSessionsMap.set(s.groupId, s));
 
-      renderGroupList();
+      renderSessionList();
       renderPaginationBar();
-      if (showNotice) showToast("群列表已刷新", "success");
+      if (showNotice) showToast(currentSessionType === "private" ? "私聊列表已刷新" : "群列表已刷新", "success");
 
-      // Auto select only on initial load when no group has been selected yet
-      if (!currentGroupId && groupsCache.length > 0) {
-        const stored = sessionStorage.getItem("qq_chat_current_group");
-        const foundStored = stored && groupsCache.find((g) => g.groupId === stored);
-        const target = foundStored ? stored : groupsCache[0].groupId;
-        selectGroup(target, false);
+      // Auto select only on initial load when no session has been selected yet
+      const activeId = getCurrentActiveId();
+      if (!activeId && sessionsCache.length > 0) {
+        const stored = currentSessionType === "private"
+          ? sessionStorage.getItem("qq_chat_current_private")
+          : sessionStorage.getItem("qq_chat_current_group");
+        const foundStored = stored && sessionsCache.find((s) => s.groupId === stored);
+        const target = foundStored ? stored : sessionsCache[0].groupId;
+        selectSession(target, false);
       }
     } catch (err) {
-      console.warn("fetchGroups error:", err);
+      console.warn("fetchSessions error:", err);
     }
   }
 
@@ -937,71 +1033,88 @@
     const prevBtn = barEl.querySelector(".qq-chat-page-prev");
     const nextBtn = barEl.querySelector(".qq-chat-page-next");
     const indicator = barEl.querySelector(".qq-chat-page-indicator");
+    const unit = currentSessionType === "private" ? "人" : "群";
 
     if (indicator) {
-      indicator.textContent = `${groupPage} / ${groupTotalPages} (共 ${groupTotal} 群)`;
+      indicator.textContent = `${sessionPage} / ${sessionTotalPages} (共 ${sessionTotal} ${unit})`;
     }
     if (prevBtn) {
-      prevBtn.disabled = groupPage <= 1;
+      prevBtn.disabled = sessionPage <= 1;
     }
     if (nextBtn) {
-      nextBtn.disabled = groupPage >= groupTotalPages;
+      nextBtn.disabled = sessionPage >= sessionTotalPages;
     }
   }
 
-  function renderGroupList() {
+  function renderSessionList() {
     const listEl = document.querySelector(".qq-chat-group-list");
     if (!listEl) return;
 
-    let filtered = groupsCache;
+    let filtered = sessionsCache;
 
     if (currentFilter === "official") {
-      filtered = filtered.filter((g) => g.isOfficial);
-    } else if (currentFilter === "active") {
-      filtered = filtered.filter((g) => g.active);
+      filtered = filtered.filter((s) => s.isOfficial);
+    } else if (currentFilter === "active" && currentSessionType === "group") {
+      filtered = filtered.filter((s) => s.active);
     }
 
     if (searchQuery) {
-      filtered = filtered.filter((g) => {
+      filtered = filtered.filter((s) => {
         return (
-          (g.groupName || "").toLowerCase().includes(searchQuery) ||
-          (g.groupId || "").toLowerCase().includes(searchQuery)
+          (s.groupName || "").toLowerCase().includes(searchQuery) ||
+          (s.groupId || "").toLowerCase().includes(searchQuery)
         );
       });
     }
 
+    const emptyHint = currentSessionType === "private" ? "无匹配私聊用户" : "无匹配群聊";
     if (filtered.length === 0) {
-      listEl.innerHTML = '<div class="qq-chat-empty-hint">无匹配群聊</div>';
+      listEl.innerHTML = `<div class="qq-chat-empty-hint">${emptyHint}</div>`;
       return;
     }
 
+    const activeId = getCurrentActiveId();
     listEl.innerHTML = "";
-    filtered.forEach((g) => {
+    filtered.forEach((s) => {
       const item = document.createElement("div");
-      item.className = `qq-chat-group-item ${g.groupId === currentGroupId ? "active" : ""}`;
-      item.setAttribute("data-id", g.groupId);
+      item.className = `qq-chat-group-item ${s.groupId === activeId ? "active" : ""}`;
+      item.setAttribute("data-id", s.groupId);
 
-      const color = getAvatarColor(g.groupId);
-      const initial = getInitials(g.groupName);
-      const snippet = g.lastMsg ? formatGroupSnippet(g.lastMsg.content) : "暂无消息";
-      const timeStr = g.lastMsg ? formatTime(g.lastMsg.timestamp) : "";
+      const color = getAvatarColor(s.groupId);
+      const isPrivate = currentSessionType === "private";
+      const initial = isPrivate ? getInitials(s.groupName, "私") : getInitials(s.groupName, "群");
+      const snippet = s.lastMsg ? formatGroupSnippet(s.lastMsg.content) : "暂无消息";
+      const timeStr = s.lastMsg ? formatTime(s.lastMsg.timestamp) : "";
+
+      let badgesHtml = "";
+      if (isPrivate) {
+        if (s.senderSuffix) {
+          badgesHtml += `<span class="qq-chat-id-tag" title="官Bot用户后四位ID: ${escapeHtml(s.senderSuffix)}">#${escapeHtml(s.senderSuffix)}</span>`;
+        }
+        badgesHtml += `<span class="qq-chat-badge qq-chat-badge-private">私聊</span>`;
+        if (s.isOfficial) {
+          badgesHtml += `<span class="qq-chat-badge qq-chat-badge-official">官Bot</span>`;
+        }
+      } else {
+        if (s.isOfficial) {
+          badgesHtml += `<span class="qq-chat-badge qq-chat-badge-official">官Bot</span>`;
+        }
+        badgesHtml += `<span class="qq-chat-badge ${s.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}">${s.active ? "开启" : "关闭"}</span>`;
+      }
 
       item.innerHTML = `
-        <div class="qq-chat-group-avatar ${g.isOfficial ? "official" : ""}" style="background-color: ${color}">
+        <div class="qq-chat-group-avatar ${s.isOfficial ? "official" : ""}" style="background-color: ${color}">
           ${initial}
         </div>
         <div class="qq-chat-group-content">
           <div class="qq-chat-group-title-row">
-            <span class="qq-chat-group-name" title="${escapeHtml(g.groupName)}">${escapeHtml(g.groupName)}</span>
+            <span class="qq-chat-group-name" title="${escapeHtml(s.groupName || s.groupId)}">${escapeHtml(s.groupName || s.groupId)}</span>
             <span class="qq-chat-group-time">${timeStr}</span>
           </div>
           <div class="qq-chat-group-desc-row">
             <span class="qq-chat-group-snippet" title="${snippet}">${snippet}</span>
             <div class="qq-chat-group-badges">
-              ${g.isOfficial ? '<span class="qq-chat-badge qq-chat-badge-official">官Bot</span>' : ""}
-              <span class="qq-chat-badge ${g.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}">
-                ${g.active ? "开启" : "关闭"}
-              </span>
+              ${badgesHtml}
             </div>
           </div>
         </div>
@@ -1011,28 +1124,62 @@
     });
   }
 
-  function selectGroup(groupId, forceReload = false) {
-    if (!groupId) return;
-    if (currentGroupId === groupId && !forceReload) return;
-    currentGroupId = groupId;
-    sessionStorage.setItem("qq_chat_current_group", groupId);
+  function resetMainHeader(view) {
+    if (!view) view = document.getElementById("sealdice-qq-chat-view");
+    if (!view) return;
+    const avatarEl = view.querySelector(".qq-chat-header-avatar");
+    const titleEl = view.querySelector(".qq-chat-header-title");
+    const typeBadge = view.querySelector(".qq-chat-badge-type");
+    const officialBadge = view.querySelector(".qq-chat-badge-official");
+    const statusBadge = view.querySelector(".qq-chat-badge-status");
+    const idEl = view.querySelector(".qq-chat-header-id");
+    const copyBtn = view.querySelector(".qq-chat-copy-id-btn");
+    const membersEl = view.querySelector(".qq-chat-header-members");
+    const streamEl = view.querySelector(".qq-chat-messages-stream");
+
+    if (avatarEl) avatarEl.style.display = "none";
+    if (titleEl) titleEl.textContent = currentSessionType === "private" ? "请选择左侧私聊用户" : "请选择左侧群聊";
+    if (typeBadge) typeBadge.style.display = "none";
+    if (officialBadge) officialBadge.style.display = "none";
+    if (statusBadge) statusBadge.style.display = "none";
+    if (idEl) idEl.textContent = "";
+    if (copyBtn) copyBtn.style.display = "none";
+    if (membersEl) membersEl.textContent = "";
+    if (streamEl) {
+      streamEl.innerHTML = `<div class="qq-chat-empty-hint">${currentSessionType === "private" ? "请从左侧选择私聊用户开始查看消息" : "请从左侧选择群聊开始查看消息"}</div>`;
+    }
+  }
+
+  function selectSession(sessionId, forceReload = false) {
+    if (!sessionId) return;
+    const isPrivate = currentSessionType === "private";
+    const currentActive = isPrivate ? currentPrivateId : currentGroupId;
+    if (currentActive === sessionId && !forceReload) return;
+
+    if (isPrivate) {
+      currentPrivateId = sessionId;
+      sessionStorage.setItem("qq_chat_current_private", sessionId);
+    } else {
+      currentGroupId = sessionId;
+      sessionStorage.setItem("qq_chat_current_group", sessionId);
+    }
 
     // Highlight sidebar
     document.querySelectorAll(".qq-chat-group-item").forEach((el) => {
-      if (el.getAttribute("data-id") === groupId) {
+      if (el.getAttribute("data-id") === sessionId) {
         el.classList.add("active");
       } else {
         el.classList.remove("active");
       }
     });
 
-    // Update Header
-    const group = knownGroupsMap.get(groupId) || groupsCache.find((g) => g.groupId === groupId);
+    const session = knownSessionsMap.get(sessionId) || sessionsCache.find((s) => s.groupId === sessionId);
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view) return;
 
     const avatarEl = view.querySelector(".qq-chat-header-avatar");
     const titleEl = view.querySelector(".qq-chat-header-title");
+    const typeBadge = view.querySelector(".qq-chat-badge-type");
     const officialBadge = view.querySelector(".qq-chat-badge-official");
     const statusBadge = view.querySelector(".qq-chat-badge-status");
     const idEl = view.querySelector(".qq-chat-header-id");
@@ -1041,28 +1188,45 @@
     const sendBtn = view.querySelector(".qq-chat-send-btn");
     const textarea = view.querySelector(".qq-chat-textarea");
 
-    if (group) {
+    if (session) {
       avatarEl.style.display = "flex";
-      avatarEl.textContent = getInitials(group.groupName);
-      avatarEl.style.backgroundColor = getAvatarColor(group.groupId);
-      titleEl.textContent = group.groupName || group.groupId;
-      officialBadge.style.display = group.isOfficial ? "inline-block" : "none";
+      avatarEl.textContent = isPrivate ? getInitials(session.groupName, "私") : getInitials(session.groupName, "群");
+      avatarEl.style.backgroundColor = getAvatarColor(session.groupId);
+      titleEl.textContent = session.groupName || session.groupId;
 
-      statusBadge.style.display = "inline-block";
-      statusBadge.className = `qq-chat-badge ${group.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}`;
-      statusBadge.textContent = group.active ? "Bot 已开启" : "Bot 已关闭";
+      if (typeBadge) {
+        typeBadge.style.display = isPrivate ? "inline-block" : "none";
+        typeBadge.className = "qq-chat-badge qq-chat-badge-private";
+        typeBadge.textContent = "私聊";
+      }
 
-      idEl.textContent = group.groupId;
+      officialBadge.style.display = session.isOfficial ? "inline-block" : "none";
+
+      if (isPrivate) {
+        statusBadge.style.display = "none";
+        membersEl.textContent = "";
+      } else {
+        statusBadge.style.display = "inline-block";
+        statusBadge.className = `qq-chat-badge ${session.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}`;
+        statusBadge.textContent = session.active ? "Bot 已开启" : "Bot 已关闭";
+        membersEl.textContent = session.memberNum > 0 ? `· ${session.memberNum} 人` : "";
+      }
+
+      idEl.textContent = session.groupId;
       copyBtn.style.display = "inline-block";
-      membersEl.textContent = group.memberNum > 0 ? `· ${group.memberNum} 人` : "";
     } else {
       avatarEl.style.display = "flex";
-      avatarEl.textContent = getInitials(groupId);
-      avatarEl.style.backgroundColor = getAvatarColor(groupId);
-      titleEl.textContent = groupId;
+      avatarEl.textContent = isPrivate ? getInitials(sessionId, "私") : getInitials(sessionId, "群");
+      avatarEl.style.backgroundColor = getAvatarColor(sessionId);
+      titleEl.textContent = sessionId;
+      if (typeBadge) {
+        typeBadge.style.display = isPrivate ? "inline-block" : "none";
+        typeBadge.className = "qq-chat-badge qq-chat-badge-private";
+        typeBadge.textContent = "私聊";
+      }
       officialBadge.style.display = "none";
       statusBadge.style.display = "none";
-      idEl.textContent = groupId;
+      idEl.textContent = sessionId;
       copyBtn.style.display = "inline-block";
       membersEl.textContent = "";
     }
@@ -1071,11 +1235,11 @@
       sendBtn.disabled = textarea.value.trim().length === 0 || isSending;
     }
 
-    fetchMessages(groupId, true);
+    fetchMessages(sessionId, true);
   }
 
-  async function fetchMessages(groupId, clearBefore = false) {
-    if (!groupId) return;
+  async function fetchMessages(sessionId, clearBefore = false) {
+    if (!sessionId) return;
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view || view.style.display === "none") return;
 
@@ -1088,26 +1252,29 @@
     }
 
     try {
-      const url = `/sd-api/chat/messages?groupId=${encodeURIComponent(groupId)}&limit=${messagesLimit}`;
+      const url = `/sd-api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&sessionType=${encodeURIComponent(currentSessionType)}&limit=${messagesLimit}`;
       const res = await fetch(url, { headers: getHeaders() });
       if (!res.ok) return;
-      if (currentGroupId !== groupId) return;
+      if (getCurrentActiveId() !== sessionId) return;
 
       const data = await res.json();
-      if (currentGroupId !== groupId) return;
+      if (getCurrentActiveId() !== sessionId) return;
 
       const messages = data.messages || [];
       hasMoreHistory = !!data.hasMore;
       const totalMsgCount = data.total || messages.length;
 
-      const signature = `${groupId}:${messages.length}:${messages.length > 0 ? messages[messages.length - 1].timestamp + "_" + (messages[messages.length - 1].content || "") : ""}`;
+      const signature = `${sessionId}:${messages.length}:${messages.length > 0 ? messages[messages.length - 1].timestamp + "_" + (messages[messages.length - 1].content || "") : ""}`;
       if (!clearBefore && signature === lastRenderedSignature) {
         return;
       }
       lastRenderedSignature = signature;
 
       if (messages.length === 0) {
-        streamEl.innerHTML = '<div class="qq-chat-empty-hint">该群暂无聊天记录，在群内发言或通过下方发送消息即可显示</div>';
+        const emptyMsg = currentSessionType === "private"
+          ? "该私聊暂无聊天记录，在私聊中发言或通过下方发送消息即可显示"
+          : "该群暂无聊天记录，在群内发言或通过下方发送消息即可显示";
+        streamEl.innerHTML = `<div class="qq-chat-empty-hint">${emptyMsg}</div>`;
         return;
       }
 
@@ -1118,8 +1285,8 @@
     }
   }
 
-  async function loadEarlierMessages(groupId) {
-    if (!groupId || isLoadingHistory || !currentOldestTimestamp) return;
+  async function loadEarlierMessages(sessionId) {
+    if (!sessionId || isLoadingHistory || !currentOldestTimestamp) return;
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view) return;
 
@@ -1134,13 +1301,13 @@
     }
 
     try {
-      const url = `/sd-api/chat/messages?groupId=${encodeURIComponent(groupId)}&limit=${messagesLimit}&before=${currentOldestTimestamp}`;
+      const url = `/sd-api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&sessionType=${encodeURIComponent(currentSessionType)}&limit=${messagesLimit}&before=${currentOldestTimestamp}`;
       const res = await fetch(url, { headers: getHeaders() });
       if (!res.ok) return;
-      if (currentGroupId !== groupId) return;
+      if (getCurrentActiveId() !== sessionId) return;
 
       const data = await res.json();
-      if (currentGroupId !== groupId) return;
+      if (getCurrentActiveId() !== sessionId) return;
       const earlier = data.messages || [];
       hasMoreHistory = !!data.hasMore;
 
@@ -1172,8 +1339,9 @@
     const row = document.createElement("div");
     row.className = `qq-chat-msg-row ${msg.isBot ? "qq-chat-msg-right" : "qq-chat-msg-left"}`;
 
+    const isPrivate = currentSessionType === "private";
     const avatarColor = msg.isBot ? "" : getAvatarColor(msg.senderId);
-    const avatarInitial = msg.isBot ? "海" : getInitials(msg.senderName);
+    const avatarInitial = msg.isBot ? "海" : (getInitials(msg.senderName, isPrivate ? "私" : "用"));
     const formattedContent = parseContentToHtml(msg.content);
     const timeStr = formatTime(msg.timestamp);
 
@@ -1202,7 +1370,7 @@
         </div>
         <div class="qq-chat-msg-content-wrap">
           <div class="qq-chat-msg-meta">
-            <span class="qq-chat-msg-sender">${escapeHtml(msg.senderName || "用户")}</span>
+            <span class="qq-chat-msg-sender">${escapeHtml(msg.senderName || (isPrivate ? "私聊用户" : "用户"))}</span>
             ${suffixBadge}
             <span class="qq-chat-msg-time">${timeStr}</span>
           </div>
@@ -1221,7 +1389,7 @@
       loadMoreBar.className = "qq-chat-load-more-bar";
       loadMoreBar.innerHTML = `<button type="button" class="qq-chat-load-more-btn">↑ 查看更早的历史记录${remaining > 0 ? ` (还剩 ${remaining} 条)` : ""}</button>`;
       loadMoreBar.querySelector("button").addEventListener("click", () => {
-        loadEarlierMessages(currentGroupId);
+        loadEarlierMessages(getCurrentActiveId());
       });
       streamEl.appendChild(loadMoreBar);
     }
@@ -1254,7 +1422,7 @@
       loadMoreBar.className = "qq-chat-load-more-bar";
       loadMoreBar.innerHTML = `<button type="button" class="qq-chat-load-more-btn">↑ 查看更早的历史记录${remaining > 0 ? ` (还剩 ${remaining} 条)` : ""}</button>`;
       loadMoreBar.querySelector("button").addEventListener("click", () => {
-        loadEarlierMessages(currentGroupId);
+        loadEarlierMessages(getCurrentActiveId());
       });
       fragment.appendChild(loadMoreBar);
     }
@@ -1286,7 +1454,8 @@
   }
 
   async function sendMessage() {
-    if (!currentGroupId || isSending) return;
+    const activeId = getCurrentActiveId();
+    if (!activeId || isSending) return;
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view) return;
 
@@ -1308,7 +1477,9 @@
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
-          groupId: currentGroupId,
+          targetId: activeId,
+          groupId: activeId,
+          sessionType: currentSessionType,
           message: text,
         }),
         signal: controller.signal,
@@ -1334,7 +1505,7 @@
       view.querySelector(".qq-chat-char-counter").textContent = "0/1000";
       showToast("消息已发送", "success");
 
-      await fetchMessages(currentGroupId, false);
+      await fetchMessages(activeId, false);
       scrollToBottom();
     } catch (err) {
       clearTimeout(timeoutId);
@@ -1351,17 +1522,21 @@
     }
   }
 
-  async function clearGroupMessages(groupId) {
+  async function clearSessionMessages(sessionId) {
     try {
       const res = await fetch("/sd-api/chat/clear", {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ groupId }),
+        body: JSON.stringify({
+          targetId: sessionId,
+          groupId: sessionId,
+          sessionType: currentSessionType,
+        }),
       });
       if (res.ok) {
         showToast("已清空本地记录", "success");
-        fetchMessages(groupId, true);
-        fetchGroups();
+        fetchMessages(sessionId, true);
+        fetchSessions();
       }
     } catch (err) {
       showToast("清空失败", "error");
@@ -1417,7 +1592,7 @@
       ensureChatViewMounted();
       if (!isChatRouteActive) {
         isChatRouteActive = true;
-        fetchGroups(false);
+        fetchSessions(false);
         startPolling();
       }
     } else {
@@ -1446,8 +1621,9 @@
       const isChat = window.location.hash.includes(CHAT_ROUTE);
       const view = document.getElementById("sealdice-qq-chat-view");
       if (isChat && view && view.style.display !== "none") {
-        if (currentGroupId) {
-          fetchMessages(currentGroupId, false);
+        const activeId = getCurrentActiveId();
+        if (activeId) {
+          fetchMessages(activeId, false);
         }
       } else if (!isChat) {
         stopPolling();

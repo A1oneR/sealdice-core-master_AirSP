@@ -181,10 +181,12 @@
 | --- | --- |
 | `dice/platform_adapter_official_qq.go` | QQ 官方 Bot 收发、文件、分页、Markdown、限流和富媒体重试 |
 | `dice/official_qq_identity_alias.go` | 官方身份到旧 QQ/QQ群身份的运行时别名 |
-| `dice/chat_manager.go` | 群聊消息环形缓存、双向时间游标分页、官Bot后四位ID解析、发言人格式化 |
-| `api/chat.go` | 群聊列表（默认过滤未发言空群、分页、惰性统计查询）、历史消息向上分页拉取、群消息发送、安全本地图片静态服务 `/sd-api/chat/image`（防目录穿越与 Token 鉴权） |
-| `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互、群列表范围过滤与分页导航、历史记录向上无跳动加载更多、多格式图片解析（CQ码、海豹[图:]、Markdown）、全功能大图查看器 Lightbox（平移、滚轮缩放、旋转、保存、快捷键） |
-| `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，图片卡片与悬浮缩放提示，全屏毛玻璃大图查看器与浮动工具栏，深度适配 Element Plus 与 Eldritch Study 主题 |
+| `dice/log_cleaner.go` | 跑团回放日志 KaTeX / LaTeX 富文本排版代码清洗引擎，过滤视觉标签并保留纯净文案与数值 |
+| `dice/chat_db.go` | QQ 聊天 SQLite 持久化存储引擎（`data/default/data-chat.db`），核心重启记录不丢失，支持历史记录向上分页 |
+| `dice/chat_manager.go` | 会话消息双层缓存（内存+SQLite）、群聊与私聊会话管理、双向时间游标分页、官Bot后四位ID解析、发言人格式化 |
+| `api/chat.go` | 会话列表（群聊/私聊分类切换、默认过滤未发言空群、分页、惰性统计查询）、历史消息向上分页拉取、纯净消息发送（群聊/私聊，官方 QQ 被动回复自动转接 `$tMsgID` 不消耗主动额度）、安全本地图片静态服务 `/sd-api/chat/image` |
+| `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互、[💬 群聊] 与 [👤 私聊] 模式切换、群/联系人列表过滤与分页导航、历史记录向上无跳动加载更多、多格式图片解析（CQ码、海豹[图:]、Markdown）、全功能大图查看器 Lightbox |
+| `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，会话类型分段选择器、私聊标签卡片、图片卡片与悬浮缩放提示，全屏毛玻璃大图查看器与浮动工具栏，深度适配 Element Plus 与 Eldritch Study 主题 |
 | `static/frontend/index.html` | 注入全局 `no-referrer` 策略，彻底解决腾讯/QQ 图片 CDN 防盗链 403 拦截问题 |
 | `data/default/scripts/QQ官方Bot昵称桥接.js` | 官方 QQ 身份桥接与绑定验证插件 |
 | `static/frontend` | 编译时嵌入核心的前端静态资源 |
@@ -199,11 +201,11 @@
 
 最近一次完整验证：
 
-- `go test ./dice -run TestCleanFaceTypeTags`、`go test ./dice -run TestChatManager` 与 `go test ./api -run TestChatAPI` 全部通过。
+- `go test ./dice -run "TestChat.*"` 与 `go test ./api -run "TestChat.*"` 全部通过。
 - 构建版本：`1.6.1-dev+AirSP`。
 - UPX 校验通过（`upx -t` [OK]）。
-- 当前压缩可执行文件大小：`21,288,448` 字节。
-- 当前压缩可执行文件 SHA-256：`CD5621C34CA71E903CA539FE7B31DFE9B63D2D10982F6BF594B74CB2DE4F7914`。
+- 当前压缩可执行文件大小：`22,461,952` 字节（未压缩大小：81,164,800 字节，压缩率 27.67%）。
+- 当前压缩可执行文件 SHA-256：`D422C2D3E7CCA9AC4F3190245B27D091148CC3AF7B7E54BC69C95E2A0DB0E969`。
 
 ## 后续维护约定
 
