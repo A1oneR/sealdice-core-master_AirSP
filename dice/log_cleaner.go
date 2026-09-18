@@ -17,6 +17,7 @@ var (
 	rePhantom     = regexp.MustCompile(`\\phantom\{[^{}]*\}`)
 	reTag         = regexp.MustCompile(`\\tag\*?\{([^{}]*)\}`)
 	reCancelto    = regexp.MustCompile(`\\cancelto\{([^{}]*)\}\{([^{}]*)\}`)
+	reCancel      = regexp.MustCompile(`\\(?:cancel|bcancel|xcancel|sout)\{([^{}]*)\}`)
 	reOverset     = regexp.MustCompile(`\\(?:overset|underset)\{([^{}]*)\}\{([^{}]*)\}`)
 
 	reXrightarrowOpt = regexp.MustCompile(`\\(?:xrightarrow|xtwoheadrightarrow|xhookrightarrow)\[([^\]]*)\]\{([^{}]*)\}`)
@@ -145,6 +146,10 @@ func CleanLogMessage(s string) string {
 		// 转化改动宏
 		if reCancelto.MatchString(s) {
 			s = reCancelto.ReplaceAllString(s, "$2 ➯ $1")
+			changed = true
+		}
+		if reCancel.MatchString(s) {
+			s = reCancel.ReplaceAllString(s, "~~$1~~")
 			changed = true
 		}
 

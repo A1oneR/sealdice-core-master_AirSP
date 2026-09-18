@@ -24,6 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"sealdice-core/model"
+
 	"github.com/panjf2000/ants/v2"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -126,6 +128,7 @@ func newMockDatabaseOperator(dbPath string) (*mockDatabaseOperator, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = db.AutoMigrate(&model.AttributesItemModel{})
 	return &mockDatabaseOperator{db: db}, nil
 }
 
@@ -255,6 +258,9 @@ func newExecuteNewTestDice(t *testing.T) (*Dice, *EndPointInfo, *mockPlatformAda
 		ants.Release()
 
 		mockDB.Close()
+		if d.ChatManager != nil {
+			_ = d.ChatManager.Close()
+		}
 
 		// Give async workers a short window to observe cancellation and exit.
 		time.Sleep(2 * time.Second)

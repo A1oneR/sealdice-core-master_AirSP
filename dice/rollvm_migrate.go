@@ -348,8 +348,14 @@ func DiceFormatTmpl(ctx *MsgContext, s string) string {
 			if info, exists := items.Load(text); exists {
 				if info.Version == "v1" {
 					engineVersion = "v1"
+				} else if info.Version == "v2" {
+					engineVersion = "v2"
 				}
 			}
+		}
+
+		if m := reEngineVersionMark.FindStringSubmatch(text); len(m) > 0 {
+			engineVersion = m[1]
 		}
 
 		if engineVersion == "v2" {

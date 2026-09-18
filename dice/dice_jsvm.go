@@ -674,6 +674,7 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("replyGroupWithKeyboard", ReplyGroupWithKeyboard)
 		_ = seal.Set("replyPersonWithKeyboard", ReplyPersonWithKeyboard)
 		_ = seal.Set("replyToSenderBypassIntercept", ReplyToSenderBypassIntercept)
+		_ = seal.Set("replyPersonBypassIntercept", ReplyPersonBypassIntercept)
 		_ = seal.Set("memberBan", MemberBan)
 		_ = seal.Set("memberKick", MemberKick)
 		_ = seal.Set("format", DiceFormat)

@@ -655,6 +655,9 @@ func (d *Dice) getTargetVmEngineVersion(targetType string) string {
 	case VMVersionDeck:
 		return d.Config.VMVersionForDeck
 	case VMVersionCustomText:
+		if d.Config.VMVersionForCustomText == "" {
+			return "v2"
+		}
 		return d.Config.VMVersionForCustomText
 	case VmVersionMsg:
 		return d.Config.VMVersionForMsg

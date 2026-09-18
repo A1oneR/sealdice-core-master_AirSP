@@ -58,6 +58,14 @@ func TestReplyToSenderBypassIntercept(t *testing.T) {
 	}
 }
 
+func TestReplyPersonBypassIntercept(t *testing.T) {
+	ctx, msg, adapter, _ := newMessageInterceptTestContext("help", true)
+	ReplyPersonBypassIntercept(ctx, msg, "secret-image")
+	if reply, ok := adapter.waitForMsg(time.Second); !ok || reply != "secret-image" {
+		t.Fatalf("bypass reply = %q, received=%v, want secret-image", reply, ok)
+	}
+}
+
 func TestBuiltinCommandSetsReplyInterceptContext(t *testing.T) {
 	ctx, msg, adapter, ext := newMessageInterceptTestContext("", true)
 	ctx.Session.Parent.CmdMap = CmdMapCls{

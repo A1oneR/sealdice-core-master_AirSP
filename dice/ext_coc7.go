@@ -272,6 +272,55 @@ func RegisterBuiltinExtCoc7(self *Dice) {
 				VarSetValueStr(mctx, "$t检定表达式文本", expr1Text)
 				VarSetValueStr(mctx, "$t检定计算过程", detailWrap)
 				VarSetValueStr(mctx, "$t计算过程", detailWrap)
+				VarSetValueStr(mctx, "$tD100文本", strconv.FormatInt(outcome, 10))
+				VarSetValueStr(mctx, "$t判定值文本", strconv.FormatInt(checkVal, 10))
+
+				// 判定结果颜色与标签
+				var rankColor string
+				var rankTag string
+				switch successRank {
+				case 4:
+					rankColor = "#F59E0B" // 金色
+					rankTag = "大成功"
+				case 3:
+					rankColor = "#A855F7" // 紫色
+					rankTag = "极难成功"
+				case 2:
+					rankColor = "#3B82F6" // 蓝色
+					rankTag = "困难成功"
+				case 1:
+					rankColor = "#10B981" // 绿色
+					rankTag = "成功"
+				case -1:
+					rankColor = "#EF4444" // 红色
+					rankTag = "失败"
+				case -2:
+					rankColor = "#991B1B" // 暗红色
+					rankTag = "大失败"
+				default:
+					rankColor = "#6B7280"
+					rankTag = "未知"
+				}
+
+				VarSetValueStr(mctx, "$t判定结果颜色", rankColor)
+				VarSetValueStr(mctx, "$t判定结果标签", rankTag)
+				VarSetValueStr(mctx, "$t判定结果标签_KaTeX", fmt.Sprintf(`\textcolor{%s}{\textbf{\text{[%s]}}}`, rankColor, rankTag))
+
+				detailWrapKaTeX := FormatCoCDetailKaTeX(detail1, outcome)
+				VarSetValueStr(mctx, "$t检定计算过程_KaTeX", detailWrapKaTeX)
+
+				candLatex, candMD, hasCand := FormatCoCCandidates(detail1)
+				if hasCand {
+					VarSetValueStr(mctx, "$t候选列表", candMD)
+					VarSetValueStr(mctx, "$t候选列表_KaTeX", candLatex)
+					VarSetValueStr(mctx, "$t奖励惩罚过程", " "+candMD)
+					VarSetValueStr(mctx, "$t奖励惩罚过程_KaTeX", `\ `+candLatex)
+				} else {
+					VarSetValueStr(mctx, "$t候选列表", "")
+					VarSetValueStr(mctx, "$t候选列表_KaTeX", "")
+					VarSetValueStr(mctx, "$t奖励惩罚过程", "")
+					VarSetValueStr(mctx, "$t奖励惩罚过程_KaTeX", "")
+				}
 
 				SetTempVars(mctx, mctx.Player.Name) // 信息里没有QQ昵称，用这个顶一下
 				return nil
@@ -1239,6 +1288,9 @@ func RegisterBuiltinExtCoc7(self *Dice) {
 
 			VarSetValueStr(mctx, "$t检定表达式文本", diceExpr)
 			VarSetValueStr(mctx, "$t检定计算过程", detailWrap)
+			VarSetValueStr(mctx, "$t检定计算过程_KaTeX", "")
+			VarSetValueStr(mctx, "$tD100文本", strconv.FormatInt(d100, 10))
+			VarSetValueStr(mctx, "$t判定值文本", strconv.FormatInt(san, 10))
 
 			VarSetValueInt64(mctx, "$tD100", d100)
 			VarSetValueInt64(mctx, "$t骰子出目", d100)
@@ -1248,7 +1300,38 @@ func RegisterBuiltinExtCoc7(self *Dice) {
 			VarSetValueStr(mctx, "$t判定结果_详细", suffix)
 			VarSetValueStr(mctx, "$t判定结果_简短", suffixShort)
 			VarSetValueInt64(ctx, "$tSuccessRank", int64(successRank))
+			VarSetValueInt64(mctx, "$tSuccessRank", int64(successRank))
 			VarSetValueInt64(mctx, "$t旧值", san)
+
+			// 判定结果颜色与标签
+			var rankColor string
+			var rankTag string
+			switch successRank {
+			case 4:
+				rankColor = "#F59E0B" // 金色
+				rankTag = "大成功"
+			case 3:
+				rankColor = "#A855F7" // 紫色
+				rankTag = "极难成功"
+			case 2:
+				rankColor = "#3B82F6" // 蓝色
+				rankTag = "困难成功"
+			case 1:
+				rankColor = "#10B981" // 绿色
+				rankTag = "成功"
+			case -1:
+				rankColor = "#EF4444" // 红色
+				rankTag = "失败"
+			case -2:
+				rankColor = "#991B1B" // 暗红色
+				rankTag = "大失败"
+			default:
+				rankColor = "#6B7280"
+				rankTag = "未知"
+			}
+			VarSetValueStr(mctx, "$t判定结果颜色", rankColor)
+			VarSetValueStr(mctx, "$t判定结果标签", rankTag)
+			VarSetValueStr(mctx, "$t判定结果标签_KaTeX", fmt.Sprintf(`\textcolor{%s}{\textbf{\text{[%s]}}}`, rankColor, rankTag))
 
 			SetTempVars(mctx, mctx.Player.Name) // 信息里没有QQ昵称，用这个顶一下
 			VarSetValueStr(mctx, "$t结果文本", DiceFormatTmpl(mctx, "COC:理智检定_单项结果文本"))
@@ -1657,4 +1740,141 @@ func ResultCheckBase(cocRule int, d100 int64, attrValue int64, difficultyRequire
 	}
 
 	return successRank, criticalSuccessValue
+}
+
+var reCoCDetail = regexp.MustCompile(`(?:D100=(\d+)|(\d+))\s*,\s*(奖励|惩罚)\s*([\d\s]+)`)
+
+// FormatCoCCandidates 解析奖励骰/惩罚骰出目并生成划线格式化文本
+func FormatCoCCandidates(detail string) (latexStr string, mdStr string, ok bool) {
+	match := reCoCDetail.FindStringSubmatch(detail)
+	if len(match) == 0 {
+		return "", "", false
+	}
+
+	d100Str := match[1]
+	if d100Str == "" {
+		d100Str = match[2]
+	}
+	initialVal, err := strconv.Atoi(d100Str)
+	if err != nil {
+		return "", "", false
+	}
+
+	isBonus := match[3] == "奖励"
+	otherTensStr := strings.Fields(match[4])
+
+	unit := initialVal % 10
+	initialTens := (initialVal / 10) % 10
+	if initialVal == 100 {
+		initialTens = 0
+		unit = 0
+	}
+
+	makeNum := func(tens, u int) int {
+		if tens == 0 && u == 0 {
+			return 100
+		}
+		return tens*10 + u
+	}
+
+	candidates := []int{makeNum(initialTens, unit)}
+	for _, s := range otherTensStr {
+		t, err := strconv.Atoi(s)
+		if err == nil {
+			candidates = append(candidates, makeNum(t, unit))
+		}
+	}
+
+	// 确定最终选定值 (奖励选最低，惩罚选最高)
+	chosenVal := candidates[0]
+	for _, val := range candidates[1:] {
+		if isBonus {
+			if val < chosenVal {
+				chosenVal = val
+			}
+		} else {
+			if val > chosenVal {
+				chosenVal = val
+			}
+		}
+	}
+
+	// 生成划线文本
+	latexParts := make([]string, len(candidates))
+	mdParts := make([]string, len(candidates))
+	chosenMarked := false
+
+	for i, val := range candidates {
+		valStr := strconv.Itoa(val)
+		if val == chosenVal && !chosenMarked {
+			latexParts[i] = fmt.Sprintf(`\textbf{\text{%s}}`, valStr)
+			mdParts[i] = valStr
+			chosenMarked = true
+		} else {
+			latexParts[i] = fmt.Sprintf(`\cancel{\text{%s}}`, valStr)
+			mdParts[i] = fmt.Sprintf(`~~%s~~`, valStr)
+		}
+	}
+
+	latexStr = fmt.Sprintf(`[%s]`, strings.Join(latexParts, `,\ `))
+	mdStr = fmt.Sprintf(`[%s]`, strings.Join(mdParts, `, `))
+	return latexStr, mdStr, true
+}
+
+// FormatCoCDetailKaTeX 按照海豹骰原生奖励骰/惩罚骰括号结构生成 KaTeX 划线文本:
+// 括号内仅保留十位数出目，并将未选中的出目以横线划掉。
+// 如: ", (\text{D100}=\cancel{\text{82}},\ \text{奖励\ }\textbf{\text{7}})"
+func FormatCoCDetailKaTeX(detail string, outcome int64) string {
+	match := reCoCDetail.FindStringSubmatch(detail)
+	if len(match) == 0 {
+		return ""
+	}
+
+	d100Str := match[1]
+	if d100Str == "" {
+		d100Str = match[2]
+	}
+	initialVal, err := strconv.ParseInt(d100Str, 10, 64)
+	if err != nil {
+		return ""
+	}
+
+	action := match[3]
+	otherTensStr := strings.Fields(match[4])
+	unit := initialVal % 10
+
+	makeNum := func(tens int64, u int64) int64 {
+		if tens == 0 && u == 0 {
+			return 100
+		}
+		return tens*10 + u
+	}
+
+	var d100Formatted string
+	initialWon := initialVal == outcome
+	if initialWon {
+		d100Formatted = fmt.Sprintf(`\textbf{\text{%d}}`, initialVal)
+	} else {
+		d100Formatted = fmt.Sprintf(`\cancel{\text{%d}}`, initialVal)
+	}
+
+	tensFormattedList := make([]string, len(otherTensStr))
+	chosenBonusMarked := false
+
+	for i, s := range otherTensStr {
+		t, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			tensFormattedList[i] = s
+			continue
+		}
+		candidate := makeNum(t, unit)
+		if !initialWon && candidate == outcome && !chosenBonusMarked {
+			tensFormattedList[i] = fmt.Sprintf(`\textbf{\text{%s}}`, s)
+			chosenBonusMarked = true
+		} else {
+			tensFormattedList[i] = fmt.Sprintf(`\cancel{\text{%s}}`, s)
+		}
+	}
+
+	return fmt.Sprintf(`,\ (\text{D100}=%s,\ \text{%s\ }%s)`, d100Formatted, action, strings.Join(tensFormattedList, `\ `))
 }

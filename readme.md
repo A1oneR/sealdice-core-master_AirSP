@@ -201,11 +201,11 @@
 
 最近一次完整验证：
 
-- `go test ./dice -run "TestChat.*"` 与 `go test ./api -run "TestChat.*"` 全部通过。
+- `go test ./dice -run "TestChat.*"`、`go test ./api -run "TestChat.*"` 与 `go test ./dice -run "TestCocCard.*"` 全部通过。
 - 构建版本：`1.6.1-dev+AirSP`。
 - UPX 校验通过（`upx -t` [OK]）。
-- 当前压缩可执行文件大小：`22,461,952` 字节（未压缩大小：81,164,800 字节，压缩率 27.67%）。
-- 当前压缩可执行文件 SHA-256：`D422C2D3E7CCA9AC4F3190245B27D091148CC3AF7B7E54BC69C95E2A0DB0E969`。
+- 当前压缩可执行文件大小：`22,473,728` 字节（未压缩大小：81,177,600 字节，压缩率 27.68%）。
+- 当前压缩可执行文件 SHA-256：`C0A43CAC64C969C1839371EC03082491481A9E91D918FD055E0C477810B70D8E`。
 
 ## 后续维护约定
 

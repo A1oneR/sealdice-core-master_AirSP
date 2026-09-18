@@ -494,6 +494,19 @@ func ReplyToSenderBypassIntercept(ctx *MsgContext, msg *Message, text string) {
 	})
 }
 
+// ReplyPersonBypassIntercept sends a private replacement produced by an interceptor
+// without entering the interceptor chain again. Output censoring is retained.
+func ReplyPersonBypassIntercept(ctx *MsgContext, msg *Message, text string) {
+	if ctx == nil || msg == nil || ctx.Dice == nil {
+		logger.M().Errorf("ReplyPersonBypassIntercept 被调用，但没有正确传递参数！请检查您的参数！: ctx=%v, msg=%v", ctx, msg)
+		return
+	}
+	replyCtx := ctx.captureReplyContext()
+	panicHandler.Once(logger.M(), func() {
+		replyPersonRaw(replyCtx, msg, text, "", false, true)
+	})
+}
+
 // captureReplyContext freezes command metadata before ReplyToSender dispatches
 // asynchronously. Prefixes are consumed from the original context so multiple
 // replies from one command do not repeat them.
