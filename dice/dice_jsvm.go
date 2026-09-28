@@ -190,6 +190,71 @@ func getOfficialQQBindingLogNames(d *Dice, legacyGroupID string) map[string]inte
 	return result
 }
 
+func findOfficialQQGroupLogCandidates(d *Dice, logName string) map[string]interface{} {
+	result := map[string]interface{}{
+		"ok":         false,
+		"candidates": []map[string]interface{}{},
+	}
+	logName = strings.TrimSpace(logName)
+	if logName == "" {
+		result["error"] = "日志名称不能为空"
+		return result
+	}
+	if d == nil || d.DBOperator == nil {
+		result["error"] = "日志数据库尚未就绪"
+		return result
+	}
+	logDB := d.DBOperator.GetLogDB(constant.READ)
+	if logDB == nil {
+		result["error"] = "日志数据库尚未就绪"
+		return result
+	}
+
+	type logHeaderRow struct {
+		ID        uint64 `gorm:"column:id"`
+		Name      string `gorm:"column:name"`
+		GroupID   string `gorm:"column:group_id"`
+		CreatedAt int64  `gorm:"column:created_at"`
+		UpdatedAt int64  `gorm:"column:updated_at"`
+		Size      int64  `gorm:"column:size"`
+	}
+
+	var headers []logHeaderRow
+	err := logDB.Table("logs").
+		Select("id, name, group_id, created_at, updated_at, size").
+		Where("name = ? OR name LIKE ?", logName, "%"+logName+"%").
+		Order("updated_at DESC").
+		Limit(10).
+		Scan(&headers).Error
+	if err != nil {
+		result["error"] = err.Error()
+		return result
+	}
+
+	candidates := make([]map[string]interface{}, 0, len(headers))
+	for _, h := range headers {
+		var charNames []string
+		_ = logDB.Table("log_items").
+			Select("DISTINCT nickname").
+			Where("log_id = ? AND COALESCE(TRIM(nickname), '') <> ''", h.ID).
+			Limit(15).
+			Pluck("nickname", &charNames).Error
+
+		candidates = append(candidates, map[string]interface{}{
+			"logId":      h.ID,
+			"name":       h.Name,
+			"groupId":    h.GroupID,
+			"createdAt":  h.CreatedAt,
+			"updatedAt":  h.UpdatedAt,
+			"characters": charNames,
+		})
+	}
+
+	result["ok"] = true
+	result["candidates"] = candidates
+	return result
+}
+
 func (d *Dice) JsInit() {
 	// 读取官方 Mod 公钥
 	if pub, err := static.Scripts.ReadFile("scripts/seal_mod.public.pem"); err == nil && len(pub) > 0 {
@@ -496,40 +561,64 @@ func (d *Dice) JsInit() {
 			return d.ConfigManager.getConfig(ei.Name, key)
 		})
 		_ = ext.Set("getStringConfig", func(ei *ExtInfo, key string) string {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "string" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "string" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.(string)
+			return cfg.Value.(string)
 		})
 		_ = ext.Set("getIntConfig", func(ei *ExtInfo, key string) int64 {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "int" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "int" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.(int64)
+			return cfg.Value.(int64)
 		})
 		_ = ext.Set("getBoolConfig", func(ei *ExtInfo, key string) bool {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "bool" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "bool" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.(bool)
+			return cfg.Value.(bool)
 		})
 		_ = ext.Set("getFloatConfig", func(ei *ExtInfo, key string) float64 {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "float" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "float" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.(float64)
+			return cfg.Value.(float64)
 		})
 		_ = ext.Set("getTemplateConfig", func(ei *ExtInfo, key string) []string {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "template" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "template" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.([]string)
+			return cfg.Value.([]string)
 		})
 		_ = ext.Set("getOptionConfig", func(ei *ExtInfo, key string) string {
-			if ei.dice == nil || d.ConfigManager.getConfig(ei.Name, key).Type != "option" {
+			if ei.dice == nil {
+				panic("扩展尚未完成注册")
+			}
+			cfg := d.ConfigManager.getConfig(ei.Name, key)
+			if cfg == nil || cfg.Type != "option" {
 				panic("配置不存在或类型不匹配")
 			}
-			return d.ConfigManager.getConfig(ei.Name, key).Value.(string)
+			return cfg.Value.(string)
 		})
 		_ = ext.Set("unregisterConfig", func(ei *ExtInfo, key ...string) {
 			if ei.dice == nil {
@@ -751,6 +840,9 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("getOfficialQQBindingLogNames", func(legacyGroupID string) map[string]interface{} {
 			return getOfficialQQBindingLogNames(d, legacyGroupID)
 		})
+		_ = seal.Set("findOfficialQQGroupLogCandidates", func(logName string) map[string]interface{} {
+			return findOfficialQQGroupLogCandidates(d, logName)
+		})
 		_ = seal.Set("applyPlayerGroupCardByTemplate", func(ctx *MsgContext, tmpl string) string {
 			if tmpl != "" {
 				ctx.Player.AutoSetNameTemplate = tmpl
@@ -827,6 +919,27 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("setPlayerGroupCard", SetPlayerGroupCardByTemplate)
 		_ = seal.Set("base64ToImage", Base64ToImageFunc())
 
+		// 导出自定义回复控制与匹配接口
+		replyObj := vm.NewObject()
+		_ = seal.Set("reply", replyObj)
+		_ = replyObj.Set("dispatch", func(ctx *MsgContext, msg *Message, forceText ...string) bool {
+			var text string
+			if len(forceText) > 0 {
+				text = forceText[0]
+			}
+			return CustomReplyDo(ctx, msg, text)
+		})
+		_ = replyObj.Set("matches", func(ctx *MsgContext, msg *Message, text ...string) bool {
+			var t string
+			if len(text) > 0 {
+				t = text[0]
+			}
+			return CustomReplyCheckMatch(ctx, msg, t)
+		})
+		_ = replyObj.Set("getRules", func() []map[string]interface{} {
+			return CustomReplyGetActiveRules(d)
+		})
+
 		// Note: Szzrain 暴露dice对象给js会导致js可以调用dice的所有Export的方法
 		// 这是不安全的, 所有需要用到dice实例的函数都可以以传入ctx作为替代
 		// _ = seal.Set("inst", d)
@@ -854,7 +967,7 @@ func (d *Dice) JsInit() {
 		//  }
 		// }
 		// `)
-		_, _ = vm.RunString(`Object.freeze(seal);Object.freeze(seal.deck);Object.freeze(seal.coc);Object.freeze(seal.ext);Object.freeze(seal.vars);`)
+		_, _ = vm.RunString(`Object.freeze(seal);Object.freeze(seal.deck);Object.freeze(seal.coc);Object.freeze(seal.ext);Object.freeze(seal.vars);Object.freeze(seal.reply);`)
 	})
 	go func() {
 		defer func() {

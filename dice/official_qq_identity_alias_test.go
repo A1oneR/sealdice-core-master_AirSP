@@ -321,3 +321,19 @@ func TestResolveOfficialQQIdentityAliasForPluginStorage(t *testing.T) {
 		t.Fatalf("unbound identity = %q, want unchanged trimmed identity", got)
 	}
 }
+
+func TestResolveOfficialQQGroupToGroupAlias(t *testing.T) {
+	newGroupID := "OpenQQ-Group:1020304050-new-pure-group"
+	oldGroupID := "OpenQQ-Group:3889204361-old-pure-group"
+	RemoveOfficialQQIdentityAlias(newGroupID)
+	t.Cleanup(func() {
+		RemoveOfficialQQIdentityAlias(newGroupID)
+	})
+
+	if !RegisterOfficialQQIdentityAlias(newGroupID, oldGroupID) {
+		t.Fatal("failed to register OpenQQ-Group to OpenQQ-Group alias")
+	}
+	if got := ResolveOfficialQQIdentityAlias(newGroupID); got != oldGroupID {
+		t.Fatalf("resolved peer group alias = %q, want %q", got, oldGroupID)
+	}
+}

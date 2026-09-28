@@ -376,6 +376,37 @@ func (i *ExtInfo) callWithJsCheck(d *Dice, f func()) {
 	}
 }
 
+// callWithJsCheckBool 为带布尔返回值的回调（如 OnCommandOverride）提供事件循环切换支持。
+func (i *ExtInfo) callWithJsCheckBool(d *Dice, f func() bool) bool {
+	if i.IsJsExt {
+		if d.Config.JsEnable {
+			loop, err := d.ExtLoopManager.GetLoop(i.JSLoopVersion)
+			if err != nil {
+				i.dice.Logger.Errorf("扩展<%s>运行环境已经过期: %v", i.Name, err)
+				return false
+			}
+			waitRun := make(chan bool, 1)
+			loop.RunOnLoop(func(vm *goja.Runtime) {
+				var result bool
+				defer func() {
+					if r := recover(); r != nil {
+						d.Logger.Error("JS脚本异常:", r)
+					}
+					waitRun <- result
+				}()
+
+				result = f()
+			})
+			return <-waitRun
+		} else {
+			d.Logger.Infof("当前已关闭js扩展<%v>", i.Name)
+			return false
+		}
+	} else {
+		return f()
+	}
+}
+
 // StorageInit 与旧版一致：使用互斥锁确保只初始化一次。
 func (i *ExtInfo) StorageInit() error {
 	var err error

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,6 +187,234 @@ func ReplyReload(dice *Dice) {
 	dice.CustomReplyConfig = rcs
 }
 
+// CustomReplyDo 检查并执行自定义回复匹配
+// forceText: 若非空，使用该文本进行匹配（例如传入剥离了指令前导符后的文本）；若为空，则使用 msg.Message
+// 返回值: executed (bool) 是否有自定义回复被命中并执行
+func CustomReplyDo(ctx *MsgContext, msg *Message, forceText string) bool {
+	if ctx == nil || ctx.Dice == nil || msg == nil {
+		return false
+	}
+	rcs := ctx.Dice.CustomReplyConfig
+	if !ctx.Dice.Config.CustomReplyConfigEnable {
+		return false
+	}
+	executed := false
+	log := ctx.Dice.Logger
+
+	var rawMatchText string
+	if forceText != "" {
+		rawMatchText = forceText
+	} else {
+		rawMatchText = msg.Message
+	}
+
+	cleanText, _ := AtParse(rawMatchText, "")
+	cleanText = strings.TrimSpace(cleanText)
+	VarSetValueInt64(ctx, "$t文本长度", int64(len(cleanText)))
+
+	if ctx.Dice.Config.ReplyDebugMode {
+		log.Infof("[回复调试]当前文本:“%s” hex: %x 字节形式: %v", cleanText, cleanText, []byte(cleanText))
+	}
+
+	// 在判定条件前，先设置一轮变量，以免条件中的变量出问题
+	SetTempVars(ctx, msg.Sender.Nickname)
+
+	for _, rc := range rcs {
+		if executed {
+			break
+		}
+		if !rc.Enable {
+			continue
+		}
+		vmVersion := rc.vmVersionForExecution(ctx.Dice)
+		condIndex := -1
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("异常: %v 堆栈: %v", r, string(debug.Stack()))
+				if condIndex != -1 {
+					ReplyToSender(ctx, msg, fmt.Sprintf(
+						"自定义回复匹配成功(序号%d)，但回复内容触发异常，请联系骰主修改:\n%s",
+						condIndex, DiceFormatTmpl(ctx, "核心:骰子执行异常")))
+				}
+			}
+		}()
+
+		{
+			commonCondOK := true
+			for _, cond := range rc.Conditions {
+				if !cond.Check(ctx, msg, nil, cleanText, vmVersion) {
+					commonCondOK = false
+					break
+				}
+			}
+			if !commonCondOK {
+				continue
+			}
+		}
+
+		checkInCoolDown := func() bool {
+			if ctx.Group == nil {
+				return false
+			}
+			lastTime := ctx.Group.LastCustomReplyTime
+			now := float64(time.Now().UnixMilli()) / 1000
+			interval := rc.Interval
+			if interval < 2 {
+				interval = 2
+			}
+
+			if now-lastTime < interval {
+				return true // 未达到冷却，退出
+			}
+			ctx.Group.LastCustomReplyTime = now
+			return false
+		}
+
+		for index, i := range rc.Items {
+			if !i.Enable {
+				continue
+			}
+
+			checkTrue := true
+			for _, cond := range i.Conditions {
+				if !cond.Check(ctx, msg, nil, cleanText, vmVersion) {
+					checkTrue = false
+					break
+				}
+			}
+
+			condIndex = index
+			if len(i.Conditions) == 0 || !checkTrue {
+				continue
+			}
+
+			if checkInCoolDown() {
+				// 仍在冷却，拒绝回复
+				log.Infof("自定义回复[%s]: 条件满足，但正处于冷却", rc.Filename)
+				return false
+			}
+			log.Infof("自定义回复[%s]: 条件满足", rc.Filename)
+
+			SetTempVars(ctx, msg.Sender.Nickname)
+			VarSetValueStr(ctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
+			for _, j := range i.Results {
+				j.Execute(ctx, msg, nil, vmVersion)
+			}
+			executed = true
+			break
+		}
+	}
+	return executed
+}
+
+// CustomReplyCheckMatch 仅测试指定文本是否匹配任何启用的自定义回复规则（不实际执行回复也不计算冷却）
+func CustomReplyCheckMatch(ctx *MsgContext, msg *Message, matchText string) bool {
+	if ctx == nil || ctx.Dice == nil {
+		return false
+	}
+	rcs := ctx.Dice.CustomReplyConfig
+	if !ctx.Dice.Config.CustomReplyConfigEnable {
+		return false
+	}
+	var rawMatchText string
+	if matchText != "" {
+		rawMatchText = matchText
+	} else if msg != nil {
+		rawMatchText = msg.Message
+	} else {
+		return false
+	}
+
+	cleanText, _ := AtParse(rawMatchText, "")
+	cleanText = strings.TrimSpace(cleanText)
+
+	for _, rc := range rcs {
+		if !rc.Enable {
+			continue
+		}
+		vmVersion := rc.vmVersionForExecution(ctx.Dice)
+		commonCondOK := true
+		for _, cond := range rc.Conditions {
+			if !cond.Check(ctx, msg, nil, cleanText, vmVersion) {
+				commonCondOK = false
+				break
+			}
+		}
+		if !commonCondOK {
+			continue
+		}
+
+		for _, item := range rc.Items {
+			if !item.Enable || len(item.Conditions) == 0 {
+				continue
+			}
+			checkTrue := true
+			for _, cond := range item.Conditions {
+				if !cond.Check(ctx, msg, nil, cleanText, vmVersion) {
+					checkTrue = false
+					break
+				}
+			}
+			if checkTrue {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CustomReplyGetActiveRules 汇总获取所有生效的自定义回复规则摘要
+func CustomReplyGetActiveRules(dice *Dice) []map[string]interface{} {
+	if dice == nil {
+		return []map[string]interface{}{}
+	}
+	var rules []map[string]interface{}
+	for _, rc := range dice.CustomReplyConfig {
+		if !rc.Enable {
+			continue
+		}
+		for idx, item := range rc.Items {
+			if !item.Enable {
+				continue
+			}
+			var condList []map[string]string
+			for _, cond := range item.Conditions {
+				switch c := cond.(type) {
+				case *ReplyConditionTextMatch:
+					condList = append(condList, map[string]string{
+						"condType":  c.CondType,
+						"matchType": c.MatchType,
+						"value":     c.Value,
+					})
+				case *ReplyConditionTextLenLimit:
+					condList = append(condList, map[string]string{
+						"condType": c.CondType,
+						"matchOp":  c.MatchOp,
+						"value":    strconv.Itoa(c.Value),
+					})
+				case *ReplyConditionExprTrue:
+					condList = append(condList, map[string]string{
+						"condType": c.CondType,
+						"value":    c.Value,
+					})
+				default:
+					condList = append(condList, map[string]string{
+						"condType": fmt.Sprintf("%T", cond),
+						"value":    "",
+					})
+				}
+			}
+			rules = append(rules, map[string]interface{}{
+				"filename":   rc.Filename,
+				"name":       rc.Name,
+				"itemIndex":  idx,
+				"conditions": condList,
+			})
+		}
+	}
+	return rules
+}
+
 func RegisterBuiltinExtReply(dice *Dice) {
 	ReplyReload(dice)
 
@@ -197,107 +426,7 @@ func RegisterBuiltinExtReply(dice *Dice) {
 		AutoActive: true, // 是否自动开启
 		Official:   true,
 		OnNotCommandReceived: func(ctx *MsgContext, msg *Message) {
-			// 当前，只有非指令才会匹配
-			rcs := ctx.Dice.CustomReplyConfig
-			if !ctx.Dice.Config.CustomReplyConfigEnable {
-				return
-			}
-			executed := false
-			log := ctx.Dice.Logger
-
-			cleanText, _ := AtParse(msg.Message, "")
-			cleanText = strings.TrimSpace(cleanText)
-			VarSetValueInt64(ctx, "$t文本长度", int64(len(cleanText)))
-
-			if dice.Config.ReplyDebugMode {
-				log.Infof("[回复调试]当前文本:“%s” hex: %x 字节形式: %v", cleanText, cleanText, []byte(cleanText))
-			}
-
-			// 在判定条件前，先设置一轮变量，以免条件中的变量出问题
-			SetTempVars(ctx, msg.Sender.Nickname)
-
-			for _, rc := range rcs {
-				if executed {
-					break
-				}
-				if !rc.Enable {
-					continue
-				}
-				vmVersion := rc.vmVersionForExecution(ctx.Dice)
-				condIndex := -1
-				defer func() {
-					if r := recover(); r != nil {
-						log.Errorf("异常: %v 堆栈: %v", r, string(debug.Stack()))
-						if condIndex != -1 {
-							ReplyToSender(ctx, msg, fmt.Sprintf(
-								"自定义回复匹配成功(序号%d)，但回复内容触发异常，请联系骰主修改:\n%s",
-								condIndex, DiceFormatTmpl(ctx, "核心:骰子执行异常")))
-						}
-					}
-				}()
-
-				{
-					commonCondOK := true
-					for _, cond := range rc.Conditions {
-						if !cond.Check(ctx, msg, nil, cleanText, vmVersion) {
-							commonCondOK = false
-							break
-						}
-					}
-					if !commonCondOK {
-						continue
-					}
-				}
-
-				checkInCoolDown := func() bool {
-					lastTime := ctx.Group.LastCustomReplyTime
-					now := float64(time.Now().UnixMilli()) / 1000
-					interval := rc.Interval
-					if interval < 2 {
-						interval = 2
-					}
-
-					if now-lastTime < interval {
-						return true // 未达到冷却，退出
-					}
-					ctx.Group.LastCustomReplyTime = now
-					return false
-				}
-
-				for index, i := range rc.Items {
-					if !i.Enable {
-						continue
-					}
-
-					checkTrue := true
-					for _, i := range i.Conditions {
-						if !i.Check(ctx, msg, nil, cleanText, vmVersion) {
-							checkTrue = false
-							break
-						}
-					}
-
-					condIndex = index
-					if len(i.Conditions) == 0 || !checkTrue {
-						continue
-					}
-
-					if checkInCoolDown() {
-						// 仍在冷却，拒绝回复
-						log.Infof("自定义回复[%s]: 条件满足，但正处于冷却", rc.Filename)
-						return
-					}
-					log.Infof("自定义回复[%s]: 条件满足", rc.Filename)
-
-					SetTempVars(ctx, msg.Sender.Nickname)
-					VarSetValueStr(ctx, "$tMsgID", fmt.Sprintf("%v", msg.RawID))
-					for _, j := range i.Results {
-						j.Execute(ctx, msg, nil, vmVersion)
-					}
-					executed = true
-					break
-				}
-			}
+			CustomReplyDo(ctx, msg, "")
 		},
 		GetDescText: GetExtensionDesc,
 		CmdMap:      CmdMapCls{},

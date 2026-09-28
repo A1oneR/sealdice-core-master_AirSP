@@ -1627,7 +1627,20 @@ func (ep *EndPointInfo) TriggerCommand(mctx *MsgContext, msg *Message, cmdArgs *
 				continue
 			}
 			if ext.OnCommandOverride != nil {
-				ret = ext.OnCommandOverride(mctx, msg, cmdArgs)
+				ret = ext.callWithJsCheckBool(d, func() bool {
+					return ext.OnCommandOverride(mctx, msg, cmdArgs)
+				})
+				if ret {
+					break
+				}
+			}
+		}
+	} else if mctx.Group == nil {
+		for _, ext := range d.ExtList {
+			if ext != nil && ext.OnCommandOverride != nil {
+				ret = ext.callWithJsCheckBool(d, func() bool {
+					return ext.OnCommandOverride(mctx, msg, cmdArgs)
+				})
 				if ret {
 					break
 				}
@@ -1638,6 +1651,27 @@ func (ep *EndPointInfo) TriggerCommand(mctx *MsgContext, msg *Message, cmdArgs *
 	if !ret {
 		// 若自定义指令未匹配，匹配标准指令
 		ret = s.commandSolve(mctx, msg, cmdArgs)
+	}
+
+	if !ret {
+		// 未知指令兜底：检查剥离先导符后的文本是否匹配自定义回复
+		// 例如官方指令面板点击发送了 /今日运势 或 /签到，若未注册同名系统指令，自动回退到自定义回复
+		var cleanCmdText string
+		if cmdArgs != nil {
+			cleanCmdText = strings.TrimSpace(cmdArgs.CleanArgs)
+			if cmdArgs.Command != "" {
+				if cleanCmdText != "" {
+					cleanCmdText = cmdArgs.Command + " " + cleanCmdText
+				} else {
+					cleanCmdText = cmdArgs.Command
+				}
+			}
+		}
+		if cleanCmdText != "" {
+			if CustomReplyDo(mctx, msg, cleanCmdText) {
+				ret = true
+			}
+		}
 	}
 
 	if ret {

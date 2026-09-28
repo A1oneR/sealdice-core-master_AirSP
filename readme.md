@@ -195,17 +195,18 @@
 
 通过标准环境构建并压缩后的文件记录：
 
-- 构建命令：`go build -ldflags="-s -w" -o sealdice-core-v161-officialqq.exe`
-- 压缩命令：`upx --best --lzma sealdice-core-v161-officialqq.exe`
-- 压缩验证：`upx -t sealdice-core-v161-officialqq.exe`（[OK]）
+- 构建命令：`go build -trimpath -ldflags="-s -w" -o sealdice-core-v161-officialqq-uncompressed.exe`
+- 压缩命令：`upx --best --lzma sealdice-core-v1615-officialqq.exe`
+- 压缩验证：`upx -t sealdice-core-v1615-officialqq.exe`（[OK]）
 
-最近一次完整验证：
+最近一次完整验证（2026-09-28）：
 
-- `go test ./dice -run "TestChat.*"`、`go test ./api -run "TestChat.*"` 与 `go test ./dice -run "TestCocCard.*"` 全部通过。
+- `go test ./dice -run "TestChat.*"`、`go test ./dice -run "TestOfficial.*"`、`go test ./dice -run "TestCocCard.*"` 全部通过。
 - 构建版本：`1.6.1-dev+AirSP`。
-- UPX 校验通过（`upx -t` [OK]）。
-- 当前压缩可执行文件大小：`22,473,728` 字节（未压缩大小：81,177,600 字节，压缩率 27.68%）。
-- 当前压缩可执行文件 SHA-256：`C0A43CAC64C969C1839371EC03082491481A9E91D918FD055E0C477810B70D8E`。
+- UPX 校验通过（`upx -t` [OK]），`--version` 启动验证通过。
+- 当前压缩可执行文件大小：`22,462,464` 字节（未压缩大小：81,029,120 字节，压缩率 27.72%）。
+- 当前压缩可执行文件 SHA-256：`0AD2A704D079CCFF987BB3FB47AC858957BB4E43FC52126C070B6692D361EEBF`。
+- 构建发布文件：`sealdice-core-v1615-officialqq.exe` / `sealdice-core-v161-officialqq.exe`。
 
 ## 后续维护约定
 

@@ -135,11 +135,19 @@ func isOfficialQQUserAliasPair(officialID, legacyID string) bool {
 	isOfficial := strings.HasPrefix(officialID, "OpenQQ:") ||
 		strings.HasPrefix(officialID, "OpenQQCH:") ||
 		strings.HasPrefix(officialID, "OpenQQ-Member-T:")
-	return isOfficial && isLegacyQQUserIdentity(legacyID)
+	isLegacy := isLegacyQQUserIdentity(legacyID) ||
+		strings.HasPrefix(legacyID, "OpenQQ:") ||
+		strings.HasPrefix(legacyID, "OpenQQCH:") ||
+		strings.HasPrefix(legacyID, "OpenQQ-Member-T:")
+	return isOfficial && isLegacy
 }
 
 func isOfficialQQGroupAliasPair(officialID, legacyID string) bool {
-	return strings.HasPrefix(officialID, "OpenQQ-Group:") && isLegacyQQGroupIdentity(legacyID)
+	isOfficial := strings.HasPrefix(officialID, "OpenQQ-Group:") || strings.HasPrefix(officialID, "OpenQQ-Group-T:")
+	isLegacy := isLegacyQQGroupIdentity(legacyID) ||
+		strings.HasPrefix(legacyID, "OpenQQ-Group:") ||
+		strings.HasPrefix(legacyID, "OpenQQ-Group-T:")
+	return isOfficial && isLegacy
 }
 
 func isLegacyQQUserIdentity(identity string) bool {
