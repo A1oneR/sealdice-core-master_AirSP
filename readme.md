@@ -187,6 +187,8 @@
 | `api/chat.go` | 会话列表（群聊/私聊分类切换、默认过滤未发言空群、分页、惰性统计查询）、历史消息向上分页拉取、纯净消息发送（群聊/私聊，官方 QQ 被动回复自动转接 `$tMsgID` 不消耗主动额度）、安全本地图片静态服务 `/sd-api/chat/image` |
 | `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互、[💬 群聊] 与 [👤 私聊] 模式切换、群/联系人列表过滤与分页导航、历史记录向上无跳动加载更多、多格式图片解析（CQ码、海豹[图:]、Markdown）、全功能大图查看器 Lightbox |
 | `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，会话类型分段选择器、私聊标签卡片、图片卡片与悬浮缩放提示，全屏毛玻璃大图查看器与浮动工具栏，深度适配 Element Plus 与 Eldritch Study 主题 |
+| `third_party/botgo_local/websocket/client/client.go` | 官方 QQ Bot WebSocket 客户端半开死连接心跳看门狗（动态 ReadDeadline、WriteDeadline、心跳 ACK 活性检测） |
+| `third_party/botgo_local/sessions/local/local.go` | 本地 Session 管理器鉴权/Resume 异常通道防死锁与自动重入排队保护 |
 | `static/frontend/index.html` | 注入全局 `no-referrer` 策略，彻底解决腾讯/QQ 图片 CDN 防盗链 403 拦截问题 |
 | `data/default/scripts/QQ官方Bot昵称桥接.js` | 官方 QQ 身份桥接与绑定验证插件 |
 | `static/frontend` | 编译时嵌入核心的前端静态资源 |
@@ -196,17 +198,18 @@
 通过标准环境构建并压缩后的文件记录：
 
 - 构建命令：`go build -trimpath -ldflags="-s -w" -o sealdice-core-v161-officialqq-uncompressed.exe`
-- 压缩命令：`upx --best --lzma sealdice-core-v1615-officialqq.exe`
-- 压缩验证：`upx -t sealdice-core-v1615-officialqq.exe`（[OK]）
+- 压缩命令：`upx --best --lzma sealdice-core-v1617-officialqq.exe` / `sealdice-core-v161-officialqq.exe`
+- 压缩验证：`upx -t sealdice-core-v1617-officialqq.exe`（[OK]）
 
-最近一次完整验证（2026-09-28）：
+最近一次完整验证（2026-10-06）：
 
-- `go test ./dice -run "TestChat.*"`、`go test ./dice -run "TestOfficial.*"`、`go test ./dice -run "TestCocCard.*"` 全部通过。
+- 官方 QQ Bot 无响应排查诊断：浏览器实时抓取发现因网络波动导致 TCP 半开（Ghost TCP），SDK 原先缺少 `ReadDeadline` 且未校验心跳 ACK，导致阻塞在 Windows `wsarecv` 达 21 分钟。修复：接入动态超时自适应（2×心跳周期+15s，通常 75~105s 超时）、WriteDeadline (10s)、心跳看门狗（超时主动断开底层连接并触发 Resume 重连），将无响应挂起发现与恢复时间由 21 分钟缩短至 ~75 秒。
+- `go test github.com/sealdice/botgo/websocket/client`、`go test ./dice -run "TestChat.*"`、`go test ./api -run "TestChat.*"` 全部通过。
 - 构建版本：`1.6.1-dev+AirSP`。
 - UPX 校验通过（`upx -t` [OK]），`--version` 启动验证通过。
-- 当前压缩可执行文件大小：`22,462,464` 字节（未压缩大小：81,029,120 字节，压缩率 27.72%）。
-- 当前压缩可执行文件 SHA-256：`0AD2A704D079CCFF987BB3FB47AC858957BB4E43FC52126C070B6692D361EEBF`。
-- 构建发布文件：`sealdice-core-v1615-officialqq.exe` / `sealdice-core-v161-officialqq.exe`。
+- 当前压缩可执行文件大小：`22,477,824` 字节（未压缩大小：81,055,232 字节，压缩率 27.73%）。
+- 当前压缩可执行文件 SHA-256：`92BEFB172188F4218045D4C9DCA7D05A111D03305EFC1E800BC72590F12A4CB2`。
+- 构建发布文件：`sealdice-core-v1617-officialqq.exe` / `sealdice-core-v161-officialqq.exe`。
 
 ## 后续维护约定
 
