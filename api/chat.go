@@ -57,6 +57,12 @@ func chatGroupList(c echo.Context) error {
 				"error": err.Error(),
 			})
 		}
+		for _, item := range items {
+			item.AvatarURL = dice.ChatUserAvatar(item.GroupID, "")
+			if item.LastMsg != nil && !item.LastMsg.IsBot {
+				item.AvatarURL = dice.ChatUserAvatar(item.GroupID, item.LastMsg.SenderAvatar)
+			}
+		}
 		totalPages := (total + pageSize - 1) / pageSize
 		if totalPages == 0 {
 			totalPages = 1
@@ -101,6 +107,11 @@ func chatGroupList(c echo.Context) error {
 
 			group.GroupID = groupID
 			name := group.GroupName
+			if dm != nil {
+				if cached, ok := dm.GroupNameCache.Load(groupID); ok && cached.Name != "" && cached.Name != "%未知群名%" {
+					name = cached.Name
+				}
+			}
 			if name == "" && dm != nil {
 				name = dm.TryGetGroupName(groupID)
 			}
@@ -141,6 +152,7 @@ func chatGroupList(c echo.Context) error {
 				MsgCount:    msgCount,
 				RecentTime:  recentTime,
 				SessionType: "group",
+				AvatarURL:   dice.ChatGroupAvatar(groupID),
 			}
 			summaries = append(summaries, summary)
 			return true
@@ -276,10 +288,12 @@ func chatMessageSend(c echo.Context) (err error) {
 	}()
 
 	v := struct {
-		GroupID     string `json:"groupId"`
-		TargetID    string `json:"targetId"`
-		SessionType string `json:"sessionType"` // "group" or "private"
-		Message     string `json:"message"`
+		GroupID      string `json:"groupId"`
+		TargetID     string `json:"targetId"`
+		SessionType  string `json:"sessionType"` // "group" or "private"
+		Message      string `json:"message"`
+		ResourcePath string `json:"resourcePath"`
+		Markdown     bool   `json:"markdown"`
 	}{}
 	if bindErr := c.Bind(&v); bindErr != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -292,6 +306,13 @@ func chatMessageSend(c echo.Context) (err error) {
 		targetID = strings.TrimSpace(v.GroupID)
 	}
 	message := strings.TrimSpace(v.Message)
+	if v.ResourcePath != "" {
+		imageCode, imageErr := chatResourceImageCode(v.ResourcePath)
+		if imageErr != nil {
+			return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "图片资源不存在或路径无效"})
+		}
+		message += imageCode
+	}
 
 	if targetID == "" || message == "" {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -394,7 +415,11 @@ func chatMessageSend(c echo.Context) (err error) {
 			Message: message,
 		}
 
-		dice.ReplyPerson(ctx, sendMsg, message)
+		if v.Markdown && isOfficial {
+			dice.ReplyToSenderMarkdown(ctx, sendMsg, message)
+		} else {
+			dice.ReplyPerson(ctx, sendMsg, message)
+		}
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"ok":      true,
@@ -522,7 +547,11 @@ func chatMessageSend(c echo.Context) (err error) {
 	}
 
 	// Send message directly to group without any extra markers
-	dice.ReplyGroup(ctx, sendMsg, message)
+	if v.Markdown && (strings.HasPrefix(targetID, "OpenQQ-Group:") || strings.HasPrefix(targetID, "OpenQQCH-Channel:")) {
+		dice.ReplyToSenderMarkdown(ctx, sendMsg, message)
+	} else {
+		dice.ReplyGroup(ctx, sendMsg, message)
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"ok":      true,
@@ -590,12 +619,24 @@ func chatImageGet(c echo.Context) error {
 	// Security check: strictly ensure the file is within cwd/data or cwd/cache
 	dataPrefix := filepath.Join(cwd, "data")
 	cachePrefix := filepath.Join(cwd, "cache")
-	if !strings.HasPrefix(abs, dataPrefix) && !strings.HasPrefix(abs, cachePrefix) {
+	allowedRoot := ""
+	for _, root := range []string{dataPrefix, cachePrefix} {
+		if chatPathInside(root, abs) {
+			allowedRoot = root
+			break
+		}
+	}
+	if allowedRoot == "" {
 		return c.NoContent(http.StatusForbidden)
 	}
 
 	if info, err := os.Stat(abs); err != nil || info.IsDir() {
 		return c.NoContent(http.StatusNotFound)
+	}
+	resolved, pathErr := filepath.EvalSymlinks(abs)
+	resolvedRoot, rootErr := filepath.EvalSymlinks(allowedRoot)
+	if pathErr != nil || rootErr != nil || !chatPathInside(resolvedRoot, resolved) {
+		return c.NoContent(http.StatusForbidden)
 	}
 
 	return c.File(abs)

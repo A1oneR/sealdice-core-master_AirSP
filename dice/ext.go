@@ -6,11 +6,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
 
 	"github.com/dop251/goja"
+	"github.com/gofrs/flock"
 	"github.com/tidwall/buntdb"
 	"go.uber.org/zap"
 
@@ -407,27 +409,56 @@ func (i *ExtInfo) callWithJsCheckBool(d *Dice, f func() bool) bool {
 	}
 }
 
-// StorageInit 与旧版一致：使用互斥锁确保只初始化一次。
+// StorageInit shares its mutex with all transactions and close operations.
 func (i *ExtInfo) StorageInit() error {
-	var err error
+	i.dbMu.Lock()
+	defer i.dbMu.Unlock()
+	return i.storageInitLocked()
+}
+
+func (i *ExtInfo) storageInitLocked() error {
+	if i.storageRetired {
+		return errors.New("[扩展]:旧 JS 扩展存储已退出，请使用重载后的扩展")
+	}
 	if i.dice == nil {
 		return errors.New("[扩展]:必须先把扩展注册到 Dice")
 	}
 	d := i.dice
 
-	i.dbMu.Lock()
-	defer i.dbMu.Unlock()
 	if i.init {
 		return nil
 	}
 
 	dir := d.GetExtDataDir(i.Name)
 	fn := path.Join(dir, "storage.db")
-	i.Storage, err = buntdb.Open(fn)
+	owner := flock.New(fn + ".lock")
+	locked, err := owner.TryLock()
+	if err != nil || !locked {
+		_ = owner.Close()
+		return fmt.Errorf("[扩展]:存储已被占用或无法加锁，请核对重复进程/扩展：%s (lock error: %v)", fn, err)
+	}
+	db, err := buntdb.Open(fn)
 	if err != nil {
+		_ = owner.Close()
 		d.Logger.Errorf("[扩展]:初始化扩展数据库失败，原因: %v，路径为：%s", err, fn)
 		return err
 	}
+	// buntdb v1.3.2 panics from its own goroutine if Windows file replacement
+	// fails. JS try/catch cannot catch this. Keep the append-only log online;
+	// compaction must be done separately while the core is stopped.
+	if runtime.GOOS == "windows" {
+		var config buntdb.Config
+		if err = db.ReadConfig(&config); err == nil {
+			config.AutoShrinkDisabled = true
+			err = db.SetConfig(config)
+		}
+		if err != nil {
+			_ = db.Close()
+			_ = owner.Close()
+			return err
+		}
+	}
+	i.Storage, i.storageLock = db, owner
 	i.init = true
 	return nil
 }
@@ -436,6 +467,17 @@ func (i *ExtInfo) StorageInit() error {
 func (i *ExtInfo) StorageClose() error {
 	i.dbMu.Lock()
 	defer i.dbMu.Unlock()
+	return i.storageCloseLocked()
+}
+
+func (i *ExtInfo) retireStorage() error {
+	i.dbMu.Lock()
+	defer i.dbMu.Unlock()
+	i.storageRetired = true
+	return i.storageCloseLocked()
+}
+
+func (i *ExtInfo) storageCloseLocked() error {
 	if !i.init {
 		return nil
 	}
@@ -449,7 +491,11 @@ func (i *ExtInfo) StorageClose() error {
 	}
 	i.Storage = nil
 	i.init = false
-	return nil
+	if i.storageLock != nil {
+		err = i.storageLock.Close()
+		i.storageLock = nil
+	}
+	return err
 }
 
 // StorageSet/StorageGet 只是辅助函数，原注释无变更。
@@ -458,12 +504,23 @@ func (i *ExtInfo) StorageSet(k, v string) error {
 	if target == nil {
 		return errors.New("[扩展]:目标扩展不存在")
 	}
-	if err := target.StorageInit(); err != nil {
+	target.dbMu.Lock()
+	defer target.dbMu.Unlock()
+	if err := target.storageInitLocked(); err != nil {
 		return err
 	}
 	db := target.Storage
 	return db.Update(func(tx *buntdb.Tx) error {
-		_, _, err := tx.Set(k, v, nil)
+		// Repeated web snapshots used to append identical values every time.
+		// Compare in this transaction so genuine changes still persist atomically.
+		old, err := tx.Get(k)
+		if err == nil && old == v {
+			return nil
+		}
+		if err != nil && !errors.Is(err, buntdb.ErrNotFound) {
+			return err
+		}
+		_, _, err = tx.Set(k, v, nil)
 		return err
 	})
 }
@@ -474,7 +531,9 @@ func (i *ExtInfo) StorageGet(k string) (string, error) {
 	if target == nil {
 		return "", errors.New("[扩展]:目标扩展不存在")
 	}
-	if err := target.StorageInit(); err != nil {
+	target.dbMu.Lock()
+	defer target.dbMu.Unlock()
+	if err := target.storageInitLocked(); err != nil {
 		return "", err
 	}
 

@@ -43,6 +43,9 @@ func resourceGetList(c echo.Context) error {
 	// 目前只支持图片
 	var images []resource
 	_ = filepath.Walk("data/images", func(path string, info fs.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
 		if !info.IsDir() {
 			t, ext := getResourceType(path)
 			if t == Image {

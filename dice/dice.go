@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dop251/goja_nodejs/eventloop"
+	"github.com/gofrs/flock"
 	"github.com/lascape/sat"
 	wr "github.com/mroth/weightedrand/v3"
 	"github.com/robfig/cron/v3"
@@ -96,8 +97,10 @@ type ExtInfo struct {
 	Source        *JsScriptInfo `json:"-" yaml:"-"`
 	Storage       *buntdb.DB    `json:"-" yaml:"-"`
 	// 为Storage使用互斥锁,并根据ID佬的说法修改为合适的名称
-	dbMu sync.Mutex `yaml:"-"` // 互斥锁
-	init bool       `yaml:"-"` // 标记Storage是否已初始化
+	dbMu           sync.Mutex   `yaml:"-"` // 互斥锁
+	init           bool         `yaml:"-"` // 标记Storage是否已初始化
+	storageLock    *flock.Flock // storage.db.lock ownership, released only after DB closes
+	storageRetired bool         // a replaced JS extension must never reopen its old storage
 
 	// 定时任务列表，用于避免 task 失去引用
 	taskList []*JsScriptTask `json:"-" yaml:"-"`
@@ -181,17 +184,17 @@ func (m *JsLoopManager) GetWebLoop() *eventloop.EventLoop {
 // SetLoop 写入新的 loop 并自动递增版本号
 func (m *JsLoopManager) SetLoop(newLoop *eventloop.EventLoop) int64 {
 	m.loopLock.Lock()
-	defer m.loopLock.Unlock()
-
-	// 停止旧的 loop（如果存在）
-	if m.loop != nil {
-		m.loop.Terminate()
-	}
-
-	// 设置新的 loop 并递增版本号
+	oldLoop := m.loop
 	m.loop = newLoop
 	m.version++
-	return m.version
+	version := m.version
+	m.loopLock.Unlock()
+	// Running callbacks may query the manager while Terminate waits for them.
+	// Invalidate the old loop first, without holding its manager lock while waiting.
+	if oldLoop != nil {
+		oldLoop.Terminate()
+	}
+	return version
 }
 
 // 强制coc7排序在较前位置
@@ -791,8 +794,8 @@ func (d *Dice) ExtRemove(ei *ExtInfo) bool {
 		}
 		// 从 JsExtRegistry 移除真实扩展
 		if d.JsExtRegistry != nil {
-			if realExt, ok := d.JsExtRegistry.Load(ei.Name); ok && realExt != nil && realExt.Storage != nil {
-				_ = realExt.StorageClose()
+			if realExt, ok := d.JsExtRegistry.Load(ei.Name); ok && realExt != nil {
+				_ = realExt.retireStorage()
 			}
 			d.JsExtRegistry.Delete(ei.Name)
 		}
@@ -1210,4 +1213,3 @@ func (d *Dice) GetChatManager() *ChatManager {
 	}
 	return d.ChatManager
 }
-

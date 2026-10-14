@@ -21,6 +21,228 @@
   const knownSessionsMap = new Map();
   let lastRenderedSignature = "";
   let isChatRouteActive = false;
+	let resourceImages = [];
+	let resourceSelection = null;
+	let resourceTarget = null;
+	let profilePollCount = 0;
+  let sessionRequestId = 0;
+  let messagesRequestId = 0;
+  const chatReads = new Map();
+
+  function cancelChatRead(key) {
+    const controller = chatReads.get(key);
+    if (controller) {
+      chatReads.delete(key);
+      controller.abort();
+    }
+  }
+
+  // Limit each read stream to one request, including response-body download.
+  // A stalled chat poll must not occupy every connection used by the UI heartbeat.
+  async function fetchChatJson(key, url, timeoutMs = 8000, replace = false) {
+    if (chatReads.has(key)) {
+      if (!replace) return null;
+      cancelChatRead(key);
+    }
+    const controller = new AbortController();
+    chatReads.set(key, controller);
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { headers: getHeaders(), signal: controller.signal });
+      const data = await res.json();
+      if (controller.signal.aborted || chatReads.get(key) !== controller) return null;
+      return { res, data };
+    } catch (err) {
+      if (err.name === "AbortError") return null;
+      throw err;
+    } finally {
+      window.clearTimeout(timer);
+      if (chatReads.get(key) === controller) chatReads.delete(key);
+    }
+  }
+  const katexShortcuts = [
+    ["∞", "无穷", String.raw`\infty`], ["π", "圆周率", String.raw`\pi`],
+    ["α", "阿尔法", String.raw`\alpha`], ["β", "贝塔", String.raw`\beta`],
+    ["θ", "西塔", String.raw`\theta`], ["Δ", "德尔塔", String.raw`\Delta`],
+    ["±", "正负", String.raw`\pm`], ["×", "乘号", String.raw`\times`],
+    ["÷", "除号", String.raw`\div`], ["≠", "不等于", String.raw`\neq`],
+    ["≈", "约等于", String.raw`\approx`], ["≤", "小于等于", String.raw`\leq`],
+    ["≥", "大于等于", String.raw`\geq`], ["→", "右箭头", String.raw`\rightarrow`],
+    ["↔", "双向箭头", String.raw`\leftrightarrow`], ["⇒", "推出", String.raw`\Rightarrow`],
+    ["∑", "求和", String.raw`\sum`], ["∫", "积分", String.raw`\int`],
+    ["√x", "平方根", String.raw`\sqrt{x}`], ["a/b", "分数", String.raw`\dfrac{a}{b}`],
+    ["★", "星星", String.raw`\bigstar`], ["♥", "爱心", String.raw`\heartsuit`],
+    ["✓", "对勾", String.raw`\checkmark`], ["☑", "选中框", String.raw`\boxtimes`],
+  ];
+
+  function updateMarkdownMode() {
+    const input = document.querySelector(".qq-chat-markdown-mode");
+    if (!input) return;
+    const id = getCurrentActiveId();
+    const supported = /^(OpenQQ:|OpenQQ-Group:|OpenQQCH:|OpenQQCH-Channel:)/.test(id);
+    input.disabled = !supported;
+    if (!supported) input.checked = false;
+  }
+
+  function insertDraftText(code, markdown = false) {
+    const input = document.querySelector(".qq-chat-textarea");
+    if (!input || !getCurrentActiveId() || isSending) return false;
+    const start = input.selectionStart, end = input.selectionEnd;
+    if (input.value.length - (end - start) + code.length > input.maxLength) {
+      showToast("输入内容已达到长度限制", "info"); return false;
+    }
+    input.setRangeText(code, start, end, "end");
+    const mode = document.querySelector(".qq-chat-markdown-mode");
+    if (markdown && !mode.disabled) mode.checked = true;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    return true;
+  }
+
+  function insertKatex(formula) {
+    const input = document.querySelector(".qq-chat-textarea");
+    const before = input.value.slice(0, input.selectionStart).replace(/\\\$/g, "");
+    const inFormula = (before.match(/\$/g) || []).length % 2 === 1;
+    insertDraftText(inFormula ? formula + " " : "$" + formula + "$ ", true);
+  }
+
+  function commandInputTag(panel = document.querySelector(".qq-chat-command-content")) {
+    const text = panel.querySelector(".qq-chat-command-text").value;
+    const show = panel.querySelector(".qq-chat-command-show").value;
+    const reference = panel.querySelector(".qq-chat-command-reference").checked;
+    if (!text.trim()) throw new Error("请填写点击后输入的内容");
+    if (Array.from(text).length > 100 || Array.from(show).length > 100) throw new Error("内容和展示文字分别最多 100 字符");
+    return `<qqbot-cmd-input text="${encodeURIComponent(text)}" show="${encodeURIComponent(show || text)}" reference="${reference}" />`;
+  }
+
+  function updateCommandPreview(root = document) {
+    const panel = root.querySelector(".qq-chat-command-content");
+    const text = panel.querySelector(".qq-chat-command-text").value;
+    const show = panel.querySelector(".qq-chat-command-show").value;
+    panel.querySelector(".qq-chat-command-preview").textContent = show || text || "点击填入内容";
+    try { panel.querySelector(".qq-chat-command-code").value = commandInputTag(panel); }
+    catch (err) { panel.querySelector(".qq-chat-command-code").value = err.message; }
+  }
+
+  function selectQuickTab(tab) {
+    const panel = document.querySelector(".qq-chat-resource-panel");
+    panel.querySelectorAll(".qq-chat-quick-tab").forEach(button => {
+      const active = button.dataset.tab === tab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    panel.querySelector(".qq-chat-resource-content").hidden = tab !== "images";
+    panel.querySelector(".qq-chat-katex-content").hidden = tab !== "katex";
+    panel.querySelector(".qq-chat-command-content").hidden = tab !== "command";
+  }
+
+  function avatarHtml(url, initial) {
+    let safe = "";
+    try { const parsed = new URL(url); if (["http:", "https:"].includes(parsed.protocol)) safe = parsed.href; } catch (_) {}
+    return `<span class="qq-chat-avatar-initial">${escapeHtml(initial)}</span>${safe ? `<img class="qq-chat-avatar-image" src="${escapeHtml(safe)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}`;
+  }
+
+  function insertMention(senderId, name) {
+    if (currentSessionType !== "group" || !getCurrentActiveId() || isSending) return;
+    if (!/^(QQ:\d+|OpenQQ:[\w-]+|OpenQQCH:[\w-]+)$/.test(senderId)) {
+      showToast("此账号暂不支持快捷 @", "info"); return;
+    }
+    const input = document.querySelector(".qq-chat-textarea");
+    const target = senderId.startsWith("QQ:") ? senderId.slice(3) : senderId;
+    const code = `[CQ:at,qq=${target}] `;
+    const start = input.selectionStart, end = input.selectionEnd;
+    if (input.value.length - (end - start) + code.length > input.maxLength) {
+      showToast("输入内容已达到长度限制", "info"); return;
+    }
+    input.setRangeText(code, start, end, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    showToast(`已插入 @${name || "群友"}`);
+  }
+
+  async function refreshSessionProfile(sessionId) {
+    if (currentSessionType !== "group") return;
+    try {
+      const result = await fetchChatJson("profile", `/sd-api/chat/profile?groupId=${encodeURIComponent(sessionId)}`, 6000);
+      if (!result) return;
+      const { res, data } = result;
+      if (!res.ok || currentSessionType !== "group" || getCurrentActiveId() !== sessionId) return;
+      if (currentSessionType !== "group" || getCurrentActiveId() !== sessionId) return;
+      const session = knownSessionsMap.get(sessionId) || sessionsCache.find(s => s.groupId === sessionId);
+      if (!session) return;
+      if (data.groupName && data.groupName !== "%未知群名%") session.groupName = data.groupName;
+      session.avatarUrl = data.avatarUrl || session.avatarUrl;
+      if (data.memberNum > 0) session.memberNum = data.memberNum;
+      document.querySelector(".qq-chat-header-title").textContent = session.groupName || sessionId;
+      const avatar = document.querySelector(".qq-chat-header-avatar");
+      avatar.innerHTML = avatarHtml(session.avatarUrl, getInitials(session.groupName, "群"));
+      document.querySelector(".qq-chat-header-members").textContent = session.memberNum > 0 ? `· ${session.memberNum} 人` : "";
+      renderSessionList();
+    } catch (_) { /* Keep cached metadata when the connection is unavailable. */ }
+  }
+
+  function closeResourcePicker() {
+    cancelChatRead("resources");
+    const panel = document.querySelector(".qq-chat-resource-panel");
+    if (panel) panel.hidden = true;
+    document.querySelector(".qq-chat-add-btn")?.setAttribute("aria-expanded", "false");
+    resourceSelection = null;
+    resourceTarget = null;
+  }
+
+  function renderResourceImages() {
+    const panel = document.querySelector(".qq-chat-resource-panel");
+    const query = panel.querySelector(".qq-chat-resource-search").value.trim().toLowerCase();
+    const filtered = resourceImages.filter(img => `${img.name} ${img.path}`.toLowerCase().includes(query));
+    const grid = panel.querySelector(".qq-chat-resource-grid");
+    grid.replaceChildren();
+    if (!filtered.length) { grid.textContent = resourceImages.length ? "没有匹配的图片" : "暂无图片，请先在资源管理中上传图片"; }
+    filtered.forEach(img => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "qq-chat-resource-item";
+      button.classList.toggle("selected", resourceSelection?.path === img.path);
+      button.title = img.path;
+      button.setAttribute("aria-pressed", String(resourceSelection?.path === img.path));
+      button.innerHTML = `<img loading="lazy" src="/sd-api/chat/image?path=${encodeURIComponent(img.path)}&token=${encodeURIComponent(getToken())}" alt="${escapeHtml(img.name)}"><span>${escapeHtml(img.name)}</span>`;
+      button.addEventListener("click", () => { resourceSelection = img; renderResourceImages(); });
+      grid.appendChild(button);
+    });
+    const send = panel.querySelector(".qq-chat-resource-send");
+    send.disabled = !resourceSelection || isSending;
+    panel.querySelector(".qq-chat-resource-selected").textContent = resourceSelection ? `已选择：${resourceSelection.name}` : `共 ${resourceImages.length} 张图片，选择后发送`;
+  }
+
+  async function openResourcePicker() {
+    const id = getCurrentActiveId();
+    if (!id) { showToast("请先选择会话"); return; }
+    const panel = document.querySelector(".qq-chat-resource-panel");
+    if (!panel.hidden) { closeResourcePicker(); return; }
+    resourceTarget = { id, type: currentSessionType };
+    const target = resourceTarget;
+    resourceSelection = null;
+    resourceImages = [];
+    panel.hidden = false;
+    document.querySelector(".qq-chat-add-btn").setAttribute("aria-expanded", "true");
+    panel.querySelector(".qq-chat-resource-search").value = "";
+    panel.querySelector(".qq-chat-resource-send").disabled = true;
+    panel.querySelector(".qq-chat-resource-selected").textContent = "";
+    panel.querySelector(".qq-chat-resource-grid").textContent = "正在加载图片资源...";
+    try {
+      const result = await fetchChatJson("resources", "/sd-api/resource/page", 10000, true);
+      if (!result) {
+        if (resourceTarget === target && !panel.hidden) panel.querySelector(".qq-chat-resource-grid").textContent = "图片资源暂未加载，请关闭后重新打开重试";
+        return;
+      }
+      const { res, data } = result;
+      if (!res.ok) throw new Error("图片资源读取失败，请检查登录状态");
+      if (resourceTarget !== target || panel.hidden) return;
+      if (data.result === false) throw new Error(data.err || "图片资源读取失败");
+      resourceImages = (data.data || []).filter(img => img.type === "image");
+      renderResourceImages();
+      panel.querySelector(".qq-chat-resource-search").focus();
+    } catch (err) { if (resourceTarget === target) panel.querySelector(".qq-chat-resource-grid").textContent = err.message; }
+  }
 
   function getCurrentActiveId() {
     return currentSessionType === "private" ? currentPrivateId : currentGroupId;
@@ -147,6 +369,13 @@
   function normalizeImageSrc(rawSrc) {
     if (!rawSrc) return "";
     let src = unescapeCQ(rawSrc).trim();
+    if (/^file:\/\//i.test(src)) {
+      try {
+        const file = new URL(src);
+        src = decodeURIComponent(file.pathname);
+        if (/^\/[a-z]:\//i.test(src)) src = src.slice(1);
+      } catch (_) { return ""; }
+    }
     if (src.startsWith("base64://")) {
       return "data:image/png;base64," + src.slice(9);
     }
@@ -241,9 +470,22 @@
   function parseContentToHtml(content) {
     if (!content) return "";
     const images = [];
+    const commands = [];
 
     // 1. [CQ:image, ...]
-    let text = String(content).replace(/\[CQ:image(?:,([^\]]*))?\]/gi, (match, paramStr) => {
+    let text = String(content).replace(/<qqbot-cmd-input\s+([^>]*?)\s*\/>/gi, (match, attributes) => {
+      const params = {};
+      for (const attr of attributes.matchAll(/(text|show|reference)="([^"]*)"/g)) params[attr[1]] = attr[2];
+      try {
+        const value = decodeURIComponent(unescapeCQ(params.text || ""));
+        const label = decodeURIComponent(unescapeCQ(params.show || params.text || ""));
+        if (!value || Array.from(value).length > 100 || Array.from(label).length > 100) return match;
+        const token = `__QQ_CHAT_CMD_${commands.length}__`;
+        commands.push({ text: value, show: label, reference: params.reference === "true" });
+        return token;
+      } catch (_) { return match; }
+    });
+    text = text.replace(/\[CQ:image(?:,([^\]]*))?\]/gi, (match, paramStr) => {
       const params = parseCqParams(paramStr || "");
       let rawUrl = params.url || params.file || "";
       if (params.url && (params.url.startsWith("http://") || params.url.startsWith("https://"))) {
@@ -327,6 +569,9 @@
     images.forEach((img, idx) => {
       const token = `__QQ_CHAT_IMG_${idx}__`;
       html = html.split(token).join(renderImageCardHtml(img.url, img.alt));
+    });
+    commands.forEach((command, index) => {
+      html = html.split(`__QQ_CHAT_CMD_${index}__`).join(`<button type="button" class="qq-chat-inline-command" data-command-text="${escapeHtml(command.text)}" data-reference="${command.reference}" title="点击填入输入框">${escapeHtml(command.show)}</button>`);
     });
 
     return html;
@@ -745,10 +990,38 @@
         </div>
 
         <footer class="qq-chat-footer">
+          <section class="qq-chat-resource-panel" hidden aria-label="图片资源、KaTeX 符号与点击填入指令">
+            <div class="qq-chat-resource-heading"><strong>快捷工具</strong><button type="button" class="qq-chat-icon-btn qq-chat-resource-close" aria-label="关闭快捷工具">×</button></div>
+            <div class="qq-chat-quick-tabs" role="tablist" aria-label="快捷工具分类">
+              <button type="button" class="qq-chat-quick-tab active" data-tab="images" role="tab" aria-selected="true">图片资源</button>
+              <button type="button" class="qq-chat-quick-tab" data-tab="katex" role="tab" aria-selected="false">KaTeX 符号</button>
+              <button type="button" class="qq-chat-quick-tab" data-tab="command" role="tab" aria-selected="false">点击填入指令</button>
+            </div>
+            <div class="qq-chat-resource-content">
+            <input class="qq-chat-resource-search" type="search" placeholder="搜索图片名称 / 路径" aria-label="搜索图片资源">
+            <div class="qq-chat-resource-grid"></div>
+            <div class="qq-chat-resource-actions"><span class="qq-chat-resource-selected"></span><button type="button" class="qq-chat-btn qq-chat-resource-send" disabled>发送图片</button></div>
+            </div>
+            <div class="qq-chat-katex-content" hidden>
+              <div class="qq-chat-katex-hint">点击插入公式，可继续编辑。官 Bot 会自动开启 Markdown / KaTeX 发送。</div>
+              <div class="qq-chat-katex-grid">${katexShortcuts.map(([symbol, name, formula], index) => `<button type="button" class="qq-chat-katex-item" data-index="${index}" title="${escapeHtml(formula)}" aria-label="插入${name}"><strong>${symbol}</strong><span>${name}</span><code>${escapeHtml(formula)}</code></button>`).join("")}</div>
+            </div>
+            <div class="qq-chat-command-content" hidden>
+              <div class="qq-chat-katex-hint">官 Bot Markdown：展示表面文字，点击后把内容填入 QQ 输入框，不会直接发送。</div>
+              <label>展示文字（show）<input class="qq-chat-command-show" type="text" maxlength="100" value="点击掷骰" placeholder="消息中显示的文字"></label>
+              <label>点击后输入（text）<textarea class="qq-chat-command-text" rows="2" maxlength="100" placeholder="填入用户聊天框的指令或文字">.r 1d100</textarea></label>
+              <label class="qq-chat-command-reference-label"><input class="qq-chat-command-reference" type="checkbox">引用原消息（reference）</label>
+              <div class="qq-chat-command-preview-row"><span>效果预览：</span><button type="button" class="qq-chat-command-preview">点击掷骰</button></div>
+              <textarea class="qq-chat-command-code" rows="3" readonly aria-label="生成的点击填入代码"></textarea>
+              <button type="button" class="qq-chat-btn qq-chat-command-insert">插入到消息</button>
+            </div>
+          </section>
           <div class="qq-chat-input-toolbar">
+            <button type="button" class="qq-chat-icon-btn qq-chat-add-btn" title="图片、KaTeX 与点击填入指令" aria-label="打开快捷工具" aria-expanded="false">+</button>
+            <label class="qq-chat-markdown-label"><input type="checkbox" class="qq-chat-markdown-mode" disabled> Markdown / KaTeX</label>
             <span class="qq-chat-toolbar-tip">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-              以骰娘身份发送消息 · 纯文本发送无任何额外标识
+              以骰娘身份发送 · 双击群友头像快捷 @
             </span>
             <span class="qq-chat-char-counter">0/1000</span>
           </div>
@@ -801,17 +1074,38 @@
     if (tipText) {
       tipText.innerHTML = `
         <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        ${isPrivate ? "以骰娘身份发送私聊消息 · 纯文本发送无任何额外标识" : "以骰娘身份发送群聊消息 · 纯文本发送无任何额外标识"}
+        ${isPrivate ? "以骰娘身份发送私聊消息" : "以骰娘身份发送群聊消息 · 双击群友头像快捷 @"}
       `;
     }
   }
 
   function bindChatViewEvents(view) {
+    view.addEventListener("error", e => {
+      if (e.target.matches?.(".qq-chat-avatar-image")) e.target.remove();
+    }, true);
+    view.querySelector(".qq-chat-add-btn").addEventListener("click", openResourcePicker);
+    view.querySelector(".qq-chat-resource-close").addEventListener("click", closeResourcePicker);
+    view.querySelector(".qq-chat-resource-search").addEventListener("input", renderResourceImages);
+    view.querySelectorAll(".qq-chat-quick-tab").forEach(button => button.addEventListener("click", () => selectQuickTab(button.dataset.tab)));
+    view.querySelectorAll(".qq-chat-katex-item").forEach(button => button.addEventListener("click", () => insertKatex(katexShortcuts[Number(button.dataset.index)][2])));
+    view.querySelectorAll(".qq-chat-command-show, .qq-chat-command-text, .qq-chat-command-reference").forEach(input => input.addEventListener("input", () => updateCommandPreview()));
+    view.querySelector(".qq-chat-command-insert").addEventListener("click", () => {
+      try { if (insertDraftText(commandInputTag() + " ", true)) closeResourcePicker(); }
+      catch (err) { showToast(err.message, "info"); }
+    });
+    view.querySelector(".qq-chat-command-preview").addEventListener("click", () => insertDraftText(view.querySelector(".qq-chat-command-text").value));
+    updateCommandPreview(view);
+    view.querySelector(".qq-chat-resource-send").addEventListener("click", () => {
+      if (!resourceSelection || !resourceTarget || resourceTarget.id !== getCurrentActiveId() || resourceTarget.type !== currentSessionType) return;
+      sendMessage(resourceSelection.path);
+    });
+    view.addEventListener("keydown", e => { if (e.key === "Escape") closeResourcePicker(); });
     const typeBtns = view.querySelectorAll(".qq-chat-type-btn");
     typeBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
         const type = btn.getAttribute("data-type");
         if (type === currentSessionType) return;
+        closeResourcePicker();
         currentSessionType = type;
         sessionStorage.setItem("qq_chat_session_type", type);
         typeBtns.forEach((b) => b.classList.toggle("active", b.getAttribute("data-type") === type));
@@ -884,6 +1178,10 @@
     });
 
     const messagesContainer = view.querySelector(".qq-chat-messages-container");
+    messagesContainer.addEventListener("dblclick", e => {
+      const avatar = e.target.closest(".qq-chat-msg-avatar[data-sender-id]");
+      if (avatar) insertMention(avatar.dataset.senderId, avatar.dataset.senderName);
+    });
     messagesContainer.addEventListener("scroll", () => {
       const atBottom =
         messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 40;
@@ -895,6 +1193,14 @@
 
     // Image click delegation to open Lightbox
     messagesContainer.addEventListener("click", (e) => {
+      const command = e.target.closest(".qq-chat-inline-command");
+      if (command) {
+        const rawId = command.closest(".qq-chat-msg-row")?.dataset.rawId;
+        const replyId = rawId ? rawId.replace(/&/g, "&amp;").replace(/\[/g, "&#91;").replace(/\]/g, "&#93;").replace(/,/g, "&#44;") : "";
+        const prefix = command.dataset.reference === "true" && replyId ? `[CQ:reply,id=${replyId}]` : "";
+        insertDraftText(prefix + command.dataset.commandText);
+        return;
+      }
       if (e.target.closest(".qq-chat-img-retry-link, a")) return;
       const card = e.target.closest(".qq-chat-img-card");
       if (card) {
@@ -985,6 +1291,8 @@
   // Data Fetching
   // --------------------------------------------------------------------------
   async function fetchSessions(showNotice = false) {
+    const requestId = ++sessionRequestId;
+    const requestedType = currentSessionType;
     try {
       let url = `/sd-api/chat/groups?page=${sessionPage}&pageSize=${sessionPageSize}&sessionType=${currentSessionType}`;
       if (currentSessionType === "group") {
@@ -993,14 +1301,20 @@
       if (searchQuery) {
         url += `&search=${encodeURIComponent(searchQuery)}`;
       }
-      const res = await fetch(url, {
-        headers: getHeaders(),
-      });
+      const result = await fetchChatJson("sessions", url, 12000, true);
+      if (!result) {
+        if (requestId === sessionRequestId && requestedType === currentSessionType && !sessionsCache.length && isChatRouteActive) {
+          const list = document.querySelector(".qq-chat-group-list");
+          if (list) list.innerHTML = '<div class="qq-chat-empty-hint">会话列表暂未加载，请点击刷新列表重试</div>';
+        }
+        return;
+      }
+      const { res, data } = result;
       if (!res.ok) {
         if (res.status === 403) showToast("登录已失效，请重新登录", "error");
         return;
       }
-      const data = await res.json();
+      if (requestId !== sessionRequestId || requestedType !== currentSessionType) return;
       sessionsCache = data.items || [];
       sessionTotal = data.total || sessionsCache.length;
       sessionPage = data.page || 1;
@@ -1021,6 +1335,8 @@
         const foundStored = stored && sessionsCache.find((s) => s.groupId === stored);
         const target = foundStored ? stored : sessionsCache[0].groupId;
         selectSession(target, false);
+      } else if (activeId && knownSessionsMap.has(activeId) && document.querySelector(".qq-chat-header-id")?.textContent !== activeId) {
+        selectSession(activeId, true);
       }
     } catch (err) {
       console.warn("fetchSessions error:", err);
@@ -1104,7 +1420,7 @@
 
       item.innerHTML = `
         <div class="qq-chat-group-avatar ${s.isOfficial ? "official" : ""}" style="background-color: ${color}">
-          ${initial}
+          ${avatarHtml(s.avatarUrl, initial)}
         </div>
         <div class="qq-chat-group-content">
           <div class="qq-chat-group-title-row">
@@ -1155,6 +1471,10 @@
     const isPrivate = currentSessionType === "private";
     const currentActive = isPrivate ? currentPrivateId : currentGroupId;
     if (currentActive === sessionId && !forceReload) return;
+    cancelChatRead("messages");
+    cancelChatRead("history");
+    cancelChatRead("profile");
+    closeResourcePicker();
 
     if (isPrivate) {
       currentPrivateId = sessionId;
@@ -1190,13 +1510,13 @@
 
     if (session) {
       avatarEl.style.display = "flex";
-      avatarEl.textContent = isPrivate ? getInitials(session.groupName, "私") : getInitials(session.groupName, "群");
+      avatarEl.innerHTML = avatarHtml(session.avatarUrl, isPrivate ? getInitials(session.groupName, "私") : getInitials(session.groupName, "群"));
       avatarEl.style.backgroundColor = getAvatarColor(session.groupId);
       titleEl.textContent = session.groupName || session.groupId;
 
       if (typeBadge) {
         typeBadge.style.display = isPrivate ? "inline-block" : "none";
-        typeBadge.className = "qq-chat-badge qq-chat-badge-private";
+        typeBadge.className = "qq-chat-badge qq-chat-badge-type qq-chat-badge-private";
         typeBadge.textContent = "私聊";
       }
 
@@ -1207,7 +1527,7 @@
         membersEl.textContent = "";
       } else {
         statusBadge.style.display = "inline-block";
-        statusBadge.className = `qq-chat-badge ${session.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}`;
+        statusBadge.className = `qq-chat-badge qq-chat-badge-status ${session.active ? "qq-chat-badge-status-on" : "qq-chat-badge-status-off"}`;
         statusBadge.textContent = session.active ? "Bot 已开启" : "Bot 已关闭";
         membersEl.textContent = session.memberNum > 0 ? `· ${session.memberNum} 人` : "";
       }
@@ -1221,7 +1541,7 @@
       titleEl.textContent = sessionId;
       if (typeBadge) {
         typeBadge.style.display = isPrivate ? "inline-block" : "none";
-        typeBadge.className = "qq-chat-badge qq-chat-badge-private";
+        typeBadge.className = "qq-chat-badge qq-chat-badge-type qq-chat-badge-private";
         typeBadge.textContent = "私聊";
       }
       officialBadge.style.display = "none";
@@ -1234,14 +1554,19 @@
     if (sendBtn && textarea) {
       sendBtn.disabled = textarea.value.trim().length === 0 || isSending;
     }
+    updateMarkdownMode();
 
     fetchMessages(sessionId, true);
+    refreshSessionProfile(sessionId);
   }
 
   async function fetchMessages(sessionId, clearBefore = false) {
     if (!sessionId) return;
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view || view.style.display === "none") return;
+    if (!clearBefore && (chatReads.has("messages") || chatReads.has("history"))) return;
+    const requestId = ++messagesRequestId;
+    const requestedType = currentSessionType;
 
     const streamEl = view.querySelector(".qq-chat-messages-stream");
     if (clearBefore) {
@@ -1253,12 +1578,18 @@
 
     try {
       const url = `/sd-api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&sessionType=${encodeURIComponent(currentSessionType)}&limit=${messagesLimit}`;
-      const res = await fetch(url, { headers: getHeaders() });
+      const result = await fetchChatJson("messages", url, 8000, clearBefore);
+      if (!result) {
+        if (clearBefore && requestId === messagesRequestId && getCurrentActiveId() === sessionId && currentSessionType === requestedType && streamEl.querySelector(".qq-chat-empty-hint")) {
+          streamEl.querySelector(".qq-chat-empty-hint").textContent = "消息暂时未加载，正在自动重试...";
+        }
+        return;
+      }
+      const { res, data } = result;
       if (!res.ok) return;
       if (getCurrentActiveId() !== sessionId) return;
 
-      const data = await res.json();
-      if (getCurrentActiveId() !== sessionId) return;
+      if (getCurrentActiveId() !== sessionId || requestedType !== currentSessionType || requestId !== messagesRequestId) return;
 
       const messages = data.messages || [];
       hasMoreHistory = !!data.hasMore;
@@ -1289,10 +1620,12 @@
     if (!sessionId || isLoadingHistory || !currentOldestTimestamp) return;
     const view = document.getElementById("sealdice-qq-chat-view");
     if (!view) return;
+    const requestedType = currentSessionType;
 
     const container = view.querySelector(".qq-chat-messages-container");
     const streamEl = view.querySelector(".qq-chat-messages-stream");
     const loadBtn = view.querySelector(".qq-chat-load-more-btn");
+    const previousLabel = loadBtn?.textContent;
 
     isLoadingHistory = true;
     if (loadBtn) {
@@ -1302,12 +1635,13 @@
 
     try {
       const url = `/sd-api/chat/messages?sessionId=${encodeURIComponent(sessionId)}&sessionType=${encodeURIComponent(currentSessionType)}&limit=${messagesLimit}&before=${currentOldestTimestamp}`;
-      const res = await fetch(url, { headers: getHeaders() });
+      const result = await fetchChatJson("history", url, 10000);
+      if (!result) return;
+      const { res, data } = result;
       if (!res.ok) return;
       if (getCurrentActiveId() !== sessionId) return;
 
-      const data = await res.json();
-      if (getCurrentActiveId() !== sessionId) return;
+      if (getCurrentActiveId() !== sessionId || currentSessionType !== requestedType) return;
       const earlier = data.messages || [];
       hasMoreHistory = !!data.hasMore;
 
@@ -1332,12 +1666,17 @@
       showToast("加载历史消息失败", "error");
     } finally {
       isLoadingHistory = false;
+      if (loadBtn?.isConnected && getCurrentActiveId() === sessionId && currentSessionType === requestedType) {
+        loadBtn.disabled = false;
+        loadBtn.textContent = previousLabel;
+      }
     }
   }
 
   function buildMessageRow(msg) {
     const row = document.createElement("div");
     row.className = `qq-chat-msg-row ${msg.isBot ? "qq-chat-msg-right" : "qq-chat-msg-left"}`;
+    if (msg.rawId != null) row.dataset.rawId = String(msg.rawId);
 
     const isPrivate = currentSessionType === "private";
     const avatarColor = msg.isBot ? "" : getAvatarColor(msg.senderId);
@@ -1356,7 +1695,7 @@
           <div class="qq-chat-msg-bubble qq-chat-bubble-bot">${formattedContent}</div>
         </div>
         <div class="qq-chat-msg-avatar qq-chat-avatar-bot" title="${escapeHtml(msg.senderName || "海豹核心")}">
-          ${avatarInitial}
+          ${avatarHtml(msg.senderAvatar, avatarInitial)}
         </div>
       `;
     } else {
@@ -1365,8 +1704,8 @@
         : "";
 
       row.innerHTML = `
-        <div class="qq-chat-msg-avatar" style="background-color: ${avatarColor}" title="${escapeHtml(msg.senderDisplay || msg.senderName)}">
-          ${avatarInitial}
+        <div class="qq-chat-msg-avatar" data-sender-id="${escapeHtml(msg.senderId)}" data-sender-name="${escapeHtml(msg.senderName)}" style="background-color: ${avatarColor}" title="${escapeHtml(msg.senderDisplay || msg.senderName)}${isPrivate ? "" : " · 双击快捷 @"}">
+          ${avatarHtml(msg.senderAvatar, avatarInitial)}
         </div>
         <div class="qq-chat-msg-content-wrap">
           <div class="qq-chat-msg-meta">
@@ -1453,7 +1792,7 @@
     }
   }
 
-  async function sendMessage() {
+  async function sendMessage(resourcePath = "") {
     const activeId = getCurrentActiveId();
     if (!activeId || isSending) return;
     const view = document.getElementById("sealdice-qq-chat-view");
@@ -1462,11 +1801,16 @@
     const textarea = view.querySelector(".qq-chat-textarea");
     const sendBtn = view.querySelector(".qq-chat-send-btn");
     const text = textarea.value.trim();
+    const originalDraft = textarea.value;
+    const sendingType = currentSessionType;
+    const markdown = !resourcePath && !view.querySelector(".qq-chat-markdown-mode").disabled && view.querySelector(".qq-chat-markdown-mode").checked;
 
-    if (!text) return;
+    if (!text && !resourcePath) return;
 
     isSending = true;
     sendBtn.disabled = true;
+    const imageSendBtn = view.querySelector(".qq-chat-resource-send");
+    imageSendBtn.disabled = true;
     sendBtn.querySelector("span").textContent = "发送中...";
 
     const controller = new AbortController();
@@ -1479,8 +1823,10 @@
         body: JSON.stringify({
           targetId: activeId,
           groupId: activeId,
-          sessionType: currentSessionType,
-          message: text,
+          sessionType: sendingType,
+          message: resourcePath ? "" : text,
+          resourcePath,
+          markdown,
         }),
         signal: controller.signal,
       });
@@ -1501,12 +1847,17 @@
       }
 
       // Success: clear input and refresh messages
-      textarea.value = "";
-      view.querySelector(".qq-chat-char-counter").textContent = "0/1000";
+      if (resourcePath) closeResourcePicker();
+      if (!resourcePath && getCurrentActiveId() === activeId && currentSessionType === sendingType && textarea.value === originalDraft) {
+        textarea.value = "";
+        view.querySelector(".qq-chat-char-counter").textContent = "0/1000";
+      }
       showToast("消息已发送", "success");
 
-      await fetchMessages(activeId, false);
-      scrollToBottom();
+      if (getCurrentActiveId() === activeId && currentSessionType === sendingType) {
+        await fetchMessages(activeId, false);
+        scrollToBottom();
+      }
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === "AbortError") {
@@ -1516,7 +1867,8 @@
       }
     } finally {
       isSending = false;
-      sendBtn.disabled = textarea.value.trim().length === 0;
+      sendBtn.disabled = textarea.value.trim().length === 0 || !getCurrentActiveId();
+      imageSendBtn.disabled = !resourceSelection;
       sendBtn.querySelector("span").textContent = "发送";
       textarea.focus();
     }
@@ -1611,12 +1963,14 @@
           });
         }
         stopPolling();
+        closeResourcePicker();
       }
     }
   }
 
   function startPolling() {
-    stopPolling();
+    stopPolling(false);
+    if (document.hidden) return;
     pollTimer = window.setInterval(() => {
       const isChat = window.location.hash.includes(CHAT_ROUTE);
       const view = document.getElementById("sealdice-qq-chat-view");
@@ -1624,6 +1978,7 @@
         const activeId = getCurrentActiveId();
         if (activeId) {
           fetchMessages(activeId, false);
+          if (++profilePollCount % 12 === 0) refreshSessionProfile(activeId);
         }
       } else if (!isChat) {
         stopPolling();
@@ -1631,10 +1986,13 @@
     }, 2500);
   }
 
-  function stopPolling() {
+  function stopPolling(cancelReads = true) {
     if (pollTimer) {
       window.clearInterval(pollTimer);
       pollTimer = null;
+    }
+    if (cancelReads) {
+      for (const key of Array.from(chatReads.keys())) cancelChatRead(key);
     }
   }
 
@@ -1642,6 +2000,16 @@
   // Initialization & Mutation Observer
   // --------------------------------------------------------------------------
   window.addEventListener("hashchange", handleRouteChange);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopPolling();
+    } else if (window.location.hash.includes(CHAT_ROUTE)) {
+      startPolling();
+      if (!sessionsCache.length) fetchSessions(false);
+      const activeId = getCurrentActiveId();
+      if (activeId) fetchMessages(activeId, false);
+    }
+  });
 
   const observer = new MutationObserver(() => {
     hookVueRouter();

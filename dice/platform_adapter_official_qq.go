@@ -314,9 +314,12 @@ type PlatformAdapterOfficialQQ struct {
 	qrMu         sync.Mutex                `json:"-" yaml:"-"`
 
 	// 主动消息发送队列
-	c2cSendQuota   *OfficialQQSendQuota `json:"-" yaml:"-"`
-	groupSendQuota *OfficialQQSendQuota `json:"-" yaml:"-"`
-	sendQuotaOnce  sync.Once            `json:"-" yaml:"-"`
+	c2cSendQuota    *OfficialQQSendQuota                  `json:"-" yaml:"-"`
+	groupSendQuota  *OfficialQQSendQuota                  `json:"-" yaml:"-"`
+	sendQuotaOnce   sync.Once                             `json:"-" yaml:"-"`
+	chatProfileMu   sync.Mutex                            `json:"-" yaml:"-"`
+	chatProfiles    map[string]officialQQChatProfileCache `json:"-" yaml:"-"`
+	chatProfileNext time.Time                             `json:"-" yaml:"-"`
 }
 
 type officialQQAdapterJSON struct {
@@ -1058,6 +1061,7 @@ func (pa *PlatformAdapterOfficialQQ) channelMsgToStdMsg(msgQQ *dto.WSATMessageDa
 	msg.GroupID = channelID
 	msg.ChannelID = channelID
 	if msgQQ.Author != nil {
+		msg.Sender.AvatarURL = msgQQ.Author.Avatar
 		msg.Sender.Nickname = msgQQ.Author.Username
 		msg.Sender.UserID = formatDiceIDOfficialQQCh(msgQQ.Author.ID)
 	}
@@ -1086,6 +1090,7 @@ func (pa *PlatformAdapterOfficialQQ) guildDirectMsgToStdMsg(msgQQ *dto.WSDirectM
 	msg.GroupID = channelID
 	msg.ChannelID = channelID
 	if msgQQ.Author != nil {
+		msg.Sender.AvatarURL = msgQQ.Author.Avatar
 		msg.Sender.Nickname = msgQQ.Author.Username
 		msg.Sender.UserID = formatDiceIDOfficialQQCh(msgQQ.Author.ID)
 	}
@@ -1117,6 +1122,7 @@ func (pa *PlatformAdapterOfficialQQ) groupMsgToStdMsg(event *dto.WSPayload, msgQ
 	msg.Platform = "OpenQQ"
 	msg.GroupID = formatDiceIDOfficialQQGroupOpenID(pa.UIN, msgQQ.GroupOpenID)
 	if msgQQ.Author != nil {
+		msg.Sender.AvatarURL = msgQQ.Author.Avatar
 		if msgQQ.Author.Username != "" {
 			msg.Sender.Nickname = msgQQ.Author.Username
 		} else if len(msgQQ.Author.MemberOpenID) >= 4 {
@@ -1174,6 +1180,7 @@ func (pa *PlatformAdapterOfficialQQ) groupNormalMsgToStdMsg(event *dto.WSPayload
 	msg.Platform = "OpenQQ"
 	msg.GroupID = formatDiceIDOfficialQQGroupOpenID(pa.UIN, msgQQ.GroupOpenID)
 	if msgQQ.Author != nil {
+		msg.Sender.AvatarURL = msgQQ.Author.Avatar
 		if msgQQ.Author.Username != "" {
 			msg.Sender.Nickname = msgQQ.Author.Username
 		} else if len(msgQQ.Author.MemberOpenID) >= 4 {
@@ -1283,6 +1290,7 @@ func (pa *PlatformAdapterOfficialQQ) c2cMsgToStdMsg(event *dto.WSPayload, msgQQ 
 	msg.RawID = msgQQ.ID
 	msg.Platform = "OpenQQ"
 	if msgQQ.Author != nil {
+		msg.Sender.AvatarURL = msgQQ.Author.Avatar
 		userOpenID := msgQQ.Author.UserOpenID
 		if msgQQ.Author.Username != "" {
 			msg.Sender.Nickname = msgQQ.Author.Username
@@ -2861,8 +2869,11 @@ func (pa *PlatformAdapterOfficialQQ) sendQQChannelMsgRaw( /* ctx */ _ *MsgContex
 }
 
 func (pa *PlatformAdapterOfficialQQ) GetGroupInfoAsync(groupID string) {
-	// 警告太频繁了，拿掉
-	// pa.EndPoint.Session.Parent.Logger.Infof("official qq 更新群信息失败：不支持该功能")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = pa.ChatGroupProfile(ctx, groupID)
+	}()
 }
 
 func formatDiceIDOfficialQQCh(userID string) string {

@@ -401,10 +401,10 @@ func (d *Dice) JsInit() {
 				wrapper = existingWrapper
 				wrapper.Author = realExt.Author
 				wrapper.Version = realExt.Version
-				wrapper.IsDeleted = false         // 重新激活（清除删除标记）
-				wrapper.dice = d                  // 确保 dice 引用正确（可能从配置恢复时为 nil）
+				wrapper.IsDeleted = false               // 重新激活（清除删除标记）
+				wrapper.dice = d                        // 确保 dice 引用正确（可能从配置恢复时为 nil）
 				wrapper.AutoActive = realExt.AutoActive // 热重载时同步自动激活状态
-				wrapper.JSLoopVersion = versionID // 同步新的 loop 版本号，避免 callWithJsCheck 时版本不匹配
+				wrapper.JSLoopVersion = versionID       // 同步新的 loop 版本号，避免 callWithJsCheck 时版本不匹配
 				d.ActiveWithGraphMu.Lock()
 				wrapper.ActiveWith = append([]string(nil), realExt.ActiveWith...)
 				d.ActiveWithGraph = nil
@@ -435,6 +435,11 @@ func (d *Dice) JsInit() {
 			// 2. 注册真实 ExtInfo 到 JsExtRegistry
 			if d.JsExtRegistry == nil {
 				d.JsExtRegistry = new(SyncMap[string, *ExtInfo])
+			}
+			if previous, ok := d.JsExtRegistry.Load(extName); ok && previous != nil && previous != realExt {
+				if err := previous.retireStorage(); err != nil {
+					panic(fmt.Errorf("关闭被替换扩展存储失败: %w", err))
+				}
 			}
 			d.JsExtRegistry.Store(extName, realExt)
 
@@ -636,7 +641,7 @@ func (d *Dice) JsInit() {
 				panic(errors.New("插件cron未成功初始化")) // 按理是不会发生的
 			}
 
-			task := JsScriptTask{cron: scriptCron, key: key, task: fn, lock: ei.dice.JsScriptCronLock, logger: ei.dice.Logger}
+			task := JsScriptTask{cron: scriptCron, key: key, task: fn, loop: loop, logger: ei.dice.Logger}
 			expr := value
 			if key != "" {
 				if config := d.ConfigManager.getConfig(ei.Name, key); config != nil {
@@ -993,6 +998,15 @@ func (d *Dice) JsShutdown() {
 }
 
 func (d *Dice) jsClear() {
+	// Finish/cancel old callbacks before closing their databases. Otherwise a
+	// callback can reopen a DB after StorageClose and leak an untracked handle.
+	if d.JsScriptCron != nil {
+		d.JsScriptCron.Stop()
+		d.JsScriptCron = nil
+	}
+	if d.ExtLoopManager != nil {
+		d.ExtLoopManager.SetLoop(nil)
+	}
 	// Wrapper 架构：不再调用 ExtRemove，只清空 JsExtRegistry
 	// 注意：不标记 wrapper 为 IsDeleted，否则重载期间消息到达会导致 wrapper 被移除
 	// IsDeleted 只在 JsDelete/ExtRemove（永久删除脚本）时设置
@@ -1000,8 +1014,10 @@ func (d *Dice) jsClear() {
 	// 清空/初始化 JsExtRegistry
 	if d.JsExtRegistry != nil {
 		d.JsExtRegistry.Range(func(_ string, ext *ExtInfo) bool {
-			if ext != nil && ext.Storage != nil {
-				_ = ext.StorageClose()
+			if ext != nil {
+				if err := ext.retireStorage(); err != nil {
+					d.Logger.Errorf("JS 扩展存储关闭失败: %s: %v", ext.Name, err)
+				}
 			}
 			return true
 		})
@@ -1020,10 +1036,6 @@ func (d *Dice) jsClear() {
 		if d.Logger != nil {
 			d.Logger.Errorf("JS 环境清理后恢复用户及 sealpack 规则模板失败，当前仅保留内置模板: %v", err)
 		}
-	}
-	// JsEnable=false 的启动状态下 ExtLoopManager 可能尚未初始化
-	if d.ExtLoopManager != nil {
-		d.ExtLoopManager.SetLoop(nil)
 	}
 }
 
@@ -1574,8 +1586,8 @@ func JsDelete(d *Dice, jsInfo *JsScriptInfo) {
 
 		// 从 JsExtRegistry 移除
 		if d.JsExtRegistry != nil {
-			if realExt, ok := d.JsExtRegistry.Load(jsInfo.Name); ok && realExt != nil && realExt.Storage != nil {
-				_ = realExt.StorageClose()
+			if realExt, ok := d.JsExtRegistry.Load(jsInfo.Name); ok && realExt != nil {
+				_ = realExt.retireStorage()
 			}
 			d.JsExtRegistry.Delete(jsInfo.Name)
 		}
@@ -1825,7 +1837,7 @@ type JsScriptTask struct {
 	cronExpr string
 	task     func(JsScriptTaskCtx)
 	entryID  *cron.EntryID
-	lock     *sync.Mutex
+	loop     *eventloop.EventLoop
 
 	logger *zap.SugaredLogger
 }
@@ -1836,18 +1848,24 @@ type JsScriptTaskCtx struct {
 }
 
 func (t *JsScriptTask) run() {
-	defer func() {
-		if r := recover(); r != nil {
-			t.logger.Errorf("插件定时任务异常: %v", r)
-		}
-	}()
-	taskCtx := JsScriptTaskCtx{
-		Now: time.Now().Unix(),
-		Key: t.key,
+	if t.loop == nil || t.task == nil {
+		return
 	}
-	defer t.lock.Unlock()
-	t.lock.Lock()
-	t.task(taskCtx)
+	// Cron runs on its own goroutine. A cron-only mutex does not protect the
+	// goja VM from concurrent commands, timers and fetch/Promise callbacks.
+	// Keep the loop captured at registration, so an old task cannot enter a
+	// replacement VM after reload; terminated loops reject queued callbacks.
+	t.loop.RunOnLoop(func(_ *goja.Runtime) {
+		defer func() {
+			if r := recover(); r != nil && t.logger != nil {
+				t.logger.Errorf("插件定时任务异常: %v", r)
+			}
+		}()
+		t.task(JsScriptTaskCtx{
+			Now: time.Now().Unix(),
+			Key: t.key,
+		})
+	})
 }
 
 func (t *JsScriptTask) On() bool {

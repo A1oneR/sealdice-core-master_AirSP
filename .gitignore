@@ -26,3 +26,7 @@ go.work.sum
 
 # build cache
 .gocache/
+
+# Temp directories and backup archives
+tmp/
+/*.zip

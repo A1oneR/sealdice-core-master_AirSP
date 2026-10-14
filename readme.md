@@ -182,11 +182,13 @@
 | `dice/platform_adapter_official_qq.go` | QQ 官方 Bot 收发、文件、分页、Markdown、限流和富媒体重试 |
 | `dice/official_qq_identity_alias.go` | 官方身份到旧 QQ/QQ群身份的运行时别名 |
 | `dice/log_cleaner.go` | 跑团回放日志 KaTeX / LaTeX 富文本排版代码清洗引擎，过滤视觉标签并保留纯净文案与数值 |
-| `dice/chat_db.go` | QQ 聊天 SQLite 持久化存储引擎（`data/default/data-chat.db`），核心重启记录不丢失，支持历史记录向上分页 |
-| `dice/chat_manager.go` | 会话消息双层缓存（内存+SQLite）、群聊与私聊会话管理、双向时间游标分页、官Bot后四位ID解析、发言人格式化 |
-| `api/chat.go` | 会话列表（群聊/私聊分类切换、默认过滤未发言空群、分页、惰性统计查询）、历史消息向上分页拉取、纯净消息发送（群聊/私聊，官方 QQ 被动回复自动转接 `$tMsgID` 不消耗主动额度）、安全本地图片静态服务 `/sd-api/chat/image` |
-| `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互、[💬 群聊] 与 [👤 私聊] 模式切换、群/联系人列表过滤与分页导航、历史记录向上无跳动加载更多、多格式图片解析（CQ码、海豹[图:]、Markdown）、全功能大图查看器 Lightbox |
-| `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，会话类型分段选择器、私聊标签卡片、图片卡片与悬浮缩放提示，全屏毛玻璃大图查看器与浮动工具栏，深度适配 Element Plus 与 Eldritch Study 主题 |
+| `dice/chat_db.go` | QQ 聊天 SQLite 持久化存储引擎（`data/default/data-chat.db`），核心重启记录不丢失，支持历史记录向上分页与头像存储迁移 |
+| `dice/chat_manager.go` | 会话消息双层缓存（内存+SQLite）、群聊与私聊会话管理、双向时间游标分页、官Bot后四位ID解析、发言人格式化与头像绑定 |
+| `dice/chat_profile.go` | QQ 群资料与头像解析服务（OpenQQ `/v2/groups/{id}/info` 真实群名/人数缓存、QQ 头像 CDN、安全头像清洗） |
+| `api/chat.go` | 会话列表（群聊/私聊分类切换、头像展示、分页）、历史消息向上分页拉取、纯净消息发送（支持图片资源、Markdown/KaTeX 模式、官方 QQ 被动回复转接 `$tMsgID`）、本地图片服务（带软链接防穿越安全校验） |
+| `api/chat_profile.go` | `GET /sd-api/chat/profile` 获取群名、群成员数、头像及可用状态 |
+| `static/frontend/assets/qq-chat.js` | 仿 QQ 聊天前端交互：群/私聊切换、头像渲染与双击 @、海豹图片资源库直接选图发送、24 项 KaTeX 公式快捷插入、点击填入指令生成（`<qqbot-cmd-input />`）、并发请求控制与单路防堆叠（解决“主程序离线”误报） |
+| `static/frontend/assets/qq-chat.css` | 仿 QQ 聊天界面样式，群资料面板、图片资源选择器、KaTeX 工具栏、点击填入生成器、头像样式、全屏毛玻璃大图查看器 |
 | `third_party/botgo_local/websocket/client/client.go` | 官方 QQ Bot WebSocket 客户端半开死连接心跳看门狗（动态 ReadDeadline、WriteDeadline、心跳 ACK 活性检测） |
 | `third_party/botgo_local/sessions/local/local.go` | 本地 Session 管理器鉴权/Resume 异常通道防死锁与自动重入排队保护 |
 | `static/frontend/index.html` | 注入全局 `no-referrer` 策略，彻底解决腾讯/QQ 图片 CDN 防盗链 403 拦截问题 |
@@ -201,15 +203,12 @@
 - 压缩命令：`upx --best --lzma sealdice-core-v1617-officialqq.exe` / `sealdice-core-v161-officialqq.exe`
 - 压缩验证：`upx -t sealdice-core-v1617-officialqq.exe`（[OK]）
 
-最近一次完整验证（2026-10-06）：
+最近验证（2026-10-13 ~ 2026-10-14）：
 
-- 官方 QQ Bot 无响应排查诊断：浏览器实时抓取发现因网络波动导致 TCP 半开（Ghost TCP），SDK 原先缺少 `ReadDeadline` 且未校验心跳 ACK，导致阻塞在 Windows `wsarecv` 达 21 分钟。修复：接入动态超时自适应（2×心跳周期+15s，通常 75~105s 超时）、WriteDeadline (10s)、心跳看门狗（超时主动断开底层连接并触发 Resume 重连），将无响应挂起发现与恢复时间由 21 分钟缩短至 ~75 秒。
-- `go test github.com/sealdice/botgo/websocket/client`、`go test ./dice -run "TestChat.*"`、`go test ./api -run "TestChat.*"` 全部通过。
-- 构建版本：`1.6.1-dev+AirSP`。
-- UPX 校验通过（`upx -t` [OK]），`--version` 启动验证通过。
-- 当前压缩可执行文件大小：`22,477,824` 字节（未压缩大小：81,055,232 字节，压缩率 27.73%）。
-- 当前压缩可执行文件 SHA-256：`92BEFB172188F4218045D4C9DCA7D05A111D03305EFC1E800BC72590F12A4CB2`。
-- 构建发布文件：`sealdice-core-v1617-officialqq.exe` / `sealdice-core-v161-officialqq.exe`。
+- **QQ 聊天增强**：增加真实群名与群人数读取（官方 Bot 接入 `/v2/groups/{id}/info`）、群和群友头像渲染与持久化、双击头像 @ 提及、资源库图片直接发送、24 个 KaTeX 公式快捷插入、点击填入指令生成与无刷新预览。
+- **防止主程序离线误报**：前端引入单路请求防堆叠与自适应超时取消（AbortController），页面后台隐藏自动停止轮询，彻底解决因聊天长轮询堆叠阻塞 Vue `/sd-api/baseInfo` 导致的离线误报。
+- **JS 扩展稳定性加固**：增加 buntdb 锁保护与 Windows AutoShrink 异常防崩溃，JS Cron 定时任务绑定 Goja 事件循环，扩展热重载安全退出旧存储。
+- 相关单元测试与回归测试全数通过。
 
 ## 后续维护约定
 

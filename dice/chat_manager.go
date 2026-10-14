@@ -63,6 +63,7 @@ type ChatMessage struct {
 	SenderName    string `json:"senderName"`
 	SenderDisplay string `json:"senderDisplay"`
 	SenderSuffix  string `json:"senderSuffix"`
+	SenderAvatar  string `json:"senderAvatar,omitempty"`
 	IsOfficial    bool   `json:"isOfficial"`
 	IsBot         bool   `json:"isBot"`
 	Content       string `json:"content"`
@@ -83,6 +84,7 @@ type ChatGroupSummary struct {
 	RecentTime   int64        `json:"recentTime"`
 	SessionType  string       `json:"sessionType,omitempty"`
 	SenderSuffix string       `json:"senderSuffix,omitempty"`
+	AvatarURL    string       `json:"avatarUrl,omitempty"`
 }
 
 // ChatManager manages group and private message history and formatting.
@@ -248,6 +250,7 @@ func (cm *ChatManager) AddIncomingMessage(ctx *MsgContext, msg *Message) *ChatMe
 		SenderName:    msg.Sender.Nickname,
 		SenderDisplay: display,
 		SenderSuffix:  suffix,
+		SenderAvatar:  ChatUserAvatar(msg.Sender.UserID, msg.Sender.AvatarURL),
 		IsOfficial:    isOfficial,
 		IsBot:         false,
 		Content:       CleanFaceTypeTags(msg.Message),
@@ -344,6 +347,7 @@ func (cm *ChatManager) AddOutgoingMessage(ctx *MsgContext, msg *Message) *ChatMe
 		SenderName:    botName,
 		SenderDisplay: botName,
 		SenderSuffix:  "",
+		SenderAvatar:  ChatUserAvatar(botID, msg.Sender.AvatarURL),
 		IsOfficial:    isOfficial,
 		IsBot:         true,
 		Content:       CleanFaceTypeTags(msg.Message),

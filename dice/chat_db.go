@@ -78,6 +78,35 @@ func (c *ChatDB) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_chat_msg_recent ON chat_messages(session_type, session_id, timestamp);
 	`
 	_, err := c.db.Exec(schema)
+	if err != nil {
+		return err
+	}
+	// Migrate existing histories without discarding messages.
+	rows, err := c.db.Query("PRAGMA table_info(chat_messages)")
+	if err != nil {
+		return err
+	}
+	hasAvatar := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue any
+		if err = rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "sender_avatar" {
+			hasAvatar = true
+		}
+	}
+	readErr := rows.Err()
+	rows.Close()
+	if readErr != nil {
+		return readErr
+	}
+	if !hasAvatar {
+		_, err = c.db.Exec("ALTER TABLE chat_messages ADD COLUMN sender_avatar TEXT NOT NULL DEFAULT ''")
+	}
 	return err
 }
 
@@ -130,13 +159,13 @@ func (c *ChatDB) SaveMessage(msg *ChatMessage) error {
 	INSERT OR REPLACE INTO chat_messages (
 		id, session_type, session_id, session_name,
 		sender_id, sender_name, sender_display, sender_suffix,
-		is_official, is_bot, content, timestamp, raw_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+		is_official, is_bot, content, timestamp, raw_id, sender_avatar
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 	`
 	_, err := c.db.Exec(query,
 		msg.ID, sessionType, sessionID, sessionName,
 		msg.SenderID, msg.SenderName, msg.SenderDisplay, msg.SenderSuffix,
-		isOfficialInt, isBotInt, msg.Content, msg.Timestamp, rawIDStr,
+		isOfficialInt, isBotInt, msg.Content, msg.Timestamp, rawIDStr, msg.SenderAvatar,
 	)
 	return err
 }
@@ -167,7 +196,7 @@ func (c *ChatDB) GetMessagesPaged(sessionID string, limit int, since int64, befo
 		query := `
 		SELECT id, session_type, session_id, session_name,
 		       sender_id, sender_name, sender_display, sender_suffix,
-		       is_official, is_bot, content, timestamp, raw_id
+		       is_official, is_bot, content, timestamp, raw_id, sender_avatar
 		FROM chat_messages
 		WHERE session_id = ? AND timestamp > ?
 		ORDER BY timestamp ASC, id ASC
@@ -199,7 +228,7 @@ func (c *ChatDB) GetMessagesPaged(sessionID string, limit int, since int64, befo
 		query = `
 		SELECT id, session_type, session_id, session_name,
 		       sender_id, sender_name, sender_display, sender_suffix,
-		       is_official, is_bot, content, timestamp, raw_id
+		       is_official, is_bot, content, timestamp, raw_id, sender_avatar
 		FROM chat_messages
 		WHERE session_id = ? AND timestamp < ?
 		ORDER BY timestamp DESC, id DESC
@@ -210,7 +239,7 @@ func (c *ChatDB) GetMessagesPaged(sessionID string, limit int, since int64, befo
 		query = `
 		SELECT id, session_type, session_id, session_name,
 		       sender_id, sender_name, sender_display, sender_suffix,
-		       is_official, is_bot, content, timestamp, raw_id
+		       is_official, is_bot, content, timestamp, raw_id, sender_avatar
 		FROM chat_messages
 		WHERE session_id = ?
 		ORDER BY timestamp DESC, id DESC
@@ -247,18 +276,19 @@ func (c *ChatDB) GetMessagesPaged(sessionID string, limit int, since int64, befo
 
 func (c *ChatDB) scanMessage(scanner interface{ Scan(dest ...any) error }) *ChatMessage {
 	var (
-		id, sessionType, sessionID, sessionName string
+		id, sessionType, sessionID, sessionName           string
 		senderID, senderName, senderDisplay, senderSuffix string
-		isOfficialInt, isBotInt int
-		content string
-		timestamp int64
-		rawID sql.NullString
+		isOfficialInt, isBotInt                           int
+		content                                           string
+		timestamp                                         int64
+		rawID                                             sql.NullString
+		senderAvatar                                      string
 	)
 
 	err := scanner.Scan(
 		&id, &sessionType, &sessionID, &sessionName,
 		&senderID, &senderName, &senderDisplay, &senderSuffix,
-		&isOfficialInt, &isBotInt, &content, &timestamp, &rawID,
+		&isOfficialInt, &isBotInt, &content, &timestamp, &rawID, &senderAvatar,
 	)
 	if err != nil {
 		return nil
@@ -280,6 +310,7 @@ func (c *ChatDB) scanMessage(scanner interface{ Scan(dest ...any) error }) *Chat
 		SenderName:    senderName,
 		SenderDisplay: senderDisplay,
 		SenderSuffix:  senderSuffix,
+		SenderAvatar:  ChatUserAvatar(senderID, senderAvatar),
 		IsOfficial:    isOfficialInt == 1,
 		IsBot:         isBotInt == 1,
 		Content:       content,
@@ -296,7 +327,7 @@ func (c *ChatDB) getLastMessageLocked(sessionID string) *ChatMessage {
 	query := `
 	SELECT id, session_type, session_id, session_name,
 	       sender_id, sender_name, sender_display, sender_suffix,
-	       is_official, is_bot, content, timestamp, raw_id
+	       is_official, is_bot, content, timestamp, raw_id, sender_avatar
 	FROM chat_messages
 	WHERE session_id = ?
 	ORDER BY timestamp DESC, id DESC

@@ -2,6 +2,47 @@
    SealDice AirSP · QQ Chat View Styles
    ========================================================================== */
 
+.qq-chat-group-avatar, .qq-chat-header-avatar, .qq-chat-msg-avatar { position: relative; overflow: hidden; }
+.qq-chat-avatar-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.qq-chat-msg-avatar[data-sender-id] { cursor: pointer; user-select: none; }
+.qq-chat-footer { position: relative; }
+.qq-chat-add-btn { font-size: 25px; flex-shrink: 0; }
+.qq-chat-resource-panel[hidden] { display: none; }
+.qq-chat-resource-panel { position: absolute; bottom: 100%; left: 12px; right: 12px; max-width: 680px; max-height: min(500px, 65vh); display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #fff; border: 1px solid #dce0e6; border-radius: 12px; box-shadow: 0 10px 38px #0002; z-index: 20; box-sizing: border-box; }
+.qq-chat-resource-heading, .qq-chat-resource-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.qq-chat-resource-search { padding: 8px 10px; border: 1px solid #dce0e6; border-radius: 6px; width: 100%; box-sizing: border-box; }
+.qq-chat-resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; overflow: auto; min-height: 100px; padding: 3px; }
+.qq-chat-resource-item { min-width: 0; padding: 6px; border: 2px solid transparent; border-radius: 8px; background: #f4f5f7; cursor: pointer; color: #333; }
+.qq-chat-resource-item.selected, .qq-chat-resource-item:hover { border-color: #1890ff; }
+.qq-chat-resource-item img { width: 100%; height: 74px; object-fit: contain; }
+.qq-chat-resource-item span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.qq-chat-resource-selected { font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.qq-chat-resource-send { flex-shrink: 0; }
+.qq-chat-resource-send:disabled { opacity: .5; cursor: default; }
+.qq-chat-resource-content { display: flex; flex-direction: column; gap: 10px; overflow: hidden; min-height: 0; }
+.qq-chat-resource-content[hidden], .qq-chat-katex-content[hidden], .qq-chat-command-content[hidden] { display: none; }
+.qq-chat-katex-content { overflow: auto; }
+.qq-chat-quick-tabs { display: flex; gap: 8px; }
+.qq-chat-quick-tab { border: 0; padding: 7px 12px; border-radius: 6px; background: #f4f5f7; cursor: pointer; }
+.qq-chat-quick-tab.active { color: #1677ff; background: #e6f4ff; }
+.qq-chat-katex-hint { font-size: 12px; color: #666; padding-bottom: 10px; }
+.qq-chat-katex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(95px, 1fr)); gap: 8px; }
+.qq-chat-katex-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 5px; border: 1px solid #e5e6eb; border-radius: 8px; background: #f7f9fc; cursor: pointer; color: #333; min-width: 0; }
+.qq-chat-katex-item:hover { border-color: #1890ff; background: #e6f4ff; }
+.qq-chat-katex-item strong { font-size: 23px; line-height: 26px; }
+.qq-chat-katex-item span { font-size: 12px; }
+.qq-chat-katex-item code { font-size: 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.qq-chat-markdown-label { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.qq-chat-markdown-label:has(input:disabled) { opacity: .5; }
+.qq-chat-command-content { display: flex; flex-direction: column; gap: 9px; overflow: auto; font-size: 12px; }
+.qq-chat-command-content label { display: flex; flex-direction: column; gap: 5px; }
+.qq-chat-command-content input[type=text], .qq-chat-command-content textarea { width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #dce0e6; border-radius: 6px; font: inherit; resize: vertical; }
+.qq-chat-command-content .qq-chat-command-reference-label { flex-direction: row; align-items: center; }
+.qq-chat-command-preview-row { display: flex; align-items: center; gap: 8px; }
+.qq-chat-command-preview, .qq-chat-inline-command { color: #1677ff; background: #e6f4ff; border: 0; border-radius: 4px; padding: 4px 8px; cursor: pointer; font: inherit; overflow-wrap: anywhere; }
+.qq-chat-command-code { background: #f7f9fc; font-family: monospace !important; flex-shrink: 0; }
+.qq-chat-command-insert { position: sticky; bottom: 0; background: #fff; flex-shrink: 0; }
+
 .main-container.is-qq-chat-active {
   padding: 0 !important;
   overflow: hidden !important;

@@ -35,6 +35,7 @@ import (
 )
 
 type SenderBase struct {
+	AvatarURL string `jsbind:"avatarUrl" json:"avatarUrl,omitempty"`
 	Nickname  string `jsbind:"nickname" json:"nickname"`
 	UserID    string `jsbind:"userId"   json:"userId"`
 	IsRobot   bool   `jsbind:"isRobot"  json:"isRobot"`

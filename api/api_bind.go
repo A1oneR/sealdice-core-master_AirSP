@@ -680,6 +680,7 @@ func Bind(e *echo.Echo, _myDice *dice.DiceManager) {
 	e.POST(prefix+"/chat/send", chatMessageSend)
 	e.POST(prefix+"/chat/clear", chatMessageClear)
 	e.GET(prefix+"/chat/image", chatImageGet)
+	e.GET(prefix+"/chat/profile", chatSessionProfile)
 
 	e.GET(prefix+"/banconfig/list", banMapList)
 	e.GET(prefix+"/banconfig/get", banConfigGet)
