@@ -1,0 +1,56 @@
+.project-group-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 16px;
+}
+
+.project-disable-all-groups,
+.project-confirm button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #d64f4f;
+  border-radius: 6px;
+  background: transparent;
+  color: #c53f3f;
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-disable-all-groups:hover,
+.project-confirm-submit:hover {
+  background: #c53f3f;
+  color: #fff;
+}
+
+.project-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.project-confirm {
+  width: min(440px, 100%);
+  padding: 22px;
+  border-radius: 8px;
+  background: var(--el-bg-color, #fff);
+  color: var(--el-text-color-primary, #303133);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.project-confirm h3 { margin: 0 0 12px; font-size: 20px; }
+.project-confirm p { margin: 0 0 14px; line-height: 1.6; }
+.project-confirm footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.project-confirm-cancel { border-color: var(--el-border-color, #dcdfe6) !important; color: inherit !important; }
+.project-confirm-error { min-height: 20px; color: #c53f3f; }
+
+.project-group-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid #3d9b68;
+  background: rgba(61, 155, 104, 0.12);
+  color: var(--el-text-color-primary, #303133);
+}

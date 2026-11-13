@@ -1,0 +1,52 @@
+package v2
+
+import (
+	"os"
+
+	v120 "sealdice-core/migrate/v2/v120"
+	v131 "sealdice-core/migrate/v2/v131"
+	v141 "sealdice-core/migrate/v2/v141"
+	v144 "sealdice-core/migrate/v2/v144"
+	v150 "sealdice-core/migrate/v2/v150"
+	v151 "sealdice-core/migrate/v2/v151"
+	v160 "sealdice-core/migrate/v2/v160"
+	v161 "sealdice-core/migrate/v2/v161"
+	"sealdice-core/utils/constant"
+	operator "sealdice-core/utils/dboperator/engine"
+	upgrade "sealdice-core/utils/upgrader"
+	"sealdice-core/utils/upgrader/store"
+)
+
+func InitUpgrader(operator operator.DatabaseOperator) error {
+	// 清理旧版 JSON 升级记录文件（已迁入 data.db，不再需要）
+	_ = os.Remove("upgrade_metadata.json")
+
+	storer := store.NewGormStore(operator.GetDataDB(constant.WRITE))
+	mgr := &upgrade.Manager{Store: storer, Database: operator}
+	// V120注册
+	mgr.Register(v120.V120Migration)
+	mgr.Register(v120.V120LogMessageMigration)
+	// V131注册
+	mgr.Register(v131.V131ConfigUpdateMigration)
+	// V141注册
+	mgr.Register(v141.V141ConfigUpdateMigration)
+	// v144注册
+	mgr.Register(v144.V144RemoveOldHelpDocMigration)
+	// v150注册
+	mgr.Register(v150.V150UpgradeAttrsMigration)
+	mgr.Register(v150.V150FixGroupInfoMigration)
+	// v151注册
+	mgr.Register(v151.V151GORMCleanMigration)
+	// v160注册
+	mgr.Register(v160.V160LogIDZeroCleanMigration)
+	mgr.Register(v160.V160LogRawMsgIDIndexMigration)
+	mgr.Register(v160.V160LogSizeRepairMigration)
+	// v161注册
+	mgr.Register(v161.V161NoticeIDsMigration)
+	mgr.Register(v161.V161LogUpdatedAtRepairMigration)
+	err := mgr.ApplyAll()
+	if err != nil {
+		return err
+	}
+	return nil
+}
