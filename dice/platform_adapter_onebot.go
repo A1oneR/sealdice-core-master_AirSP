@@ -64,6 +64,9 @@ type PlatformAdapterOnebot struct {
 	connectionMutex sync.Mutex
 	isConnecting    bool // 是否正在建立连接
 
+	reverseSessionMu       sync.Mutex
+	activeReverseSessionID string
+
 	echoServer *echo.Echo
 
 	sm                  *loopfsm.FSM
@@ -495,7 +498,8 @@ func (p *PlatformAdapterOnebot) GetGroupInfoSync(diceGroupID string) *GroupCache
 	}
 	// 这群有问题
 	groupResult := checkBlackList(diceGroupID, "group", uid, ctx)
-	if !groupResult.Passed {
+	// 邀请限制不代表群被拉黑，不能据此退出已经加入的群。
+	if groupResult.FailureType == "group_banned" {
 		// 如果是被ban之后拉群，判定为强制拉群
 		if groupResult.BanInfo != nil && groupInfo.EnteredTime > 0 && groupInfo.EnteredTime > groupResult.BanInfo.BanTime {
 			text := fmt.Sprintf("该群已被拉黑，即将自动退出，解封请联系骰主。打扰各位还请见谅。感谢使用海豹核心:\n当前情况: %s", groupResult.BanInfo.toText(ctx.Dice))
@@ -553,6 +557,11 @@ func (p *PlatformAdapterOnebot) onConnected(kws *socketio.WebsocketWrapper) {
 	p.logger.Infof("OneBot 连接成功，账号<%s>(%d)", info.NickName, info.UserId)
 	p.EndPoint.UserID = fmt.Sprintf("QQ:%d", info.UserId)
 	p.EndPoint.Nickname = info.NickName
+	if p.isServer() {
+		p.reverseSessionMu.Lock()
+		p.activeReverseSessionID = kws.GetUUID()
+		p.reverseSessionMu.Unlock()
+	}
 	_ = p.sm.Event(context.Background(), "connect_ok")
 }
 
@@ -596,6 +605,12 @@ func (p *PlatformAdapterOnebot) initializeCommonResources() {
 		p.websocketManager.On(socketio.EventDisconnect, func(payload *socketio.EventPayload) {
 			if p.isServer() {
 				p.logger.Infof("[反向WS] 连接断开，会话ID: %s", payload.SocketUUID)
+				p.reverseSessionMu.Lock()
+				if p.activeReverseSessionID == payload.SocketUUID {
+					p.activeReverseSessionID = ""
+					_ = p.sm.Event(context.Background(), "reverse_peer_lost")
+				}
+				p.reverseSessionMu.Unlock()
 			}
 		})
 		p.websocketManager.On(OnebotReceiveMessage, func(payload *socketio.EventPayload) {
@@ -966,16 +981,22 @@ func (p *PlatformAdapterOnebot) ensureFSM() {
 		"disconnected",
 		loopfsm.Events{
 			{Name: "enable", Src: []string{"disconnected", "failed"}, Dst: "connecting"},
-			{Name: "connect_ok", Src: []string{"connecting"}, Dst: "connected"},
+			// 首次连接失败后，retryConnect 直接调用 startConnection 重连，不经过 enable，
+			// 重连成功时状态机仍停在 failed。不接受 failed 的话 connect_ok 会被拒：
+			// State 一直是「连接失败」，之后的 connection_lost 也被拒，断线不再重连。
+			{Name: "connect_ok", Src: []string{"connecting", "waiting", "failed"}, Dst: "connected"},
 			{Name: "connect_fail", Src: []string{"connecting"}, Dst: "failed"},
-			{Name: "disable", Src: []string{"connecting", "connected", "failed", "disconnected"}, Dst: "disconnected"},
+			{Name: "disable", Src: []string{"connecting", "connected", "failed", "disconnected", "waiting"}, Dst: "disconnected"},
 			{Name: "connection_lost", Src: []string{"connected"}, Dst: "connecting"},
+			// Keep the reverse listener alive while its peer reconnects.
+			{Name: "reverse_peer_lost", Src: []string{"connected"}, Dst: "waiting"},
 		},
 		loopfsm.Callbacks{
 			"enter_connecting":   p.cbEnterConnecting,
 			"enter_connected":    p.cbEnterConnected,
 			"enter_failed":       p.cbEnterFailed,
 			"enter_disconnected": p.cbEnterDisconnected,
+			"enter_waiting":      p.cbEnterWaiting,
 			"after_disable":      p.cbAfterDisable,
 		},
 	)
@@ -994,6 +1015,12 @@ func (p *PlatformAdapterOnebot) cbEnterConnecting(_ context.Context, _ *loopfsm.
 func (p *PlatformAdapterOnebot) cbEnterConnected(_ context.Context, _ *loopfsm.Event) {
 	p.EndPoint.State = StateConnected
 	p.EndPoint.Enable = true
+	p.updateAndSave()
+}
+
+func (p *PlatformAdapterOnebot) cbEnterWaiting(_ context.Context, _ *loopfsm.Event) {
+	p.EndPoint.State = StateConnecting
+	p.EndPoint.Enable = p.desiredEnabled
 	p.updateAndSave()
 }
 

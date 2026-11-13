@@ -17,6 +17,7 @@ import (
 
 	"sealdice-core/dice/service"
 	sealdiceLogger "sealdice-core/logger"
+	"sealdice-core/message"
 	"sealdice-core/model"
 	"sealdice-core/utils/constant"
 )
@@ -330,6 +331,14 @@ func TestBoundOfficialQQGroupUsesLegacyLogForNativeOperations(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "continued line") {
 		t.Fatalf("export does not contain legacy log line: %q", content)
+	}
+	wantExportDir, err := filepath.Abs(filepath.Join(ctx.Dice.BaseConfig.DataDir, "log-exports"))
+	if err != nil || filepath.Dir(logFile) != wantExportDir {
+		t.Fatalf("export directory = %q, want %q, err = %v", filepath.Dir(logFile), wantExportDir, err)
+	}
+	fileName, sharedPath, err := message.ExtractLocalTempFile(logExportFileURI(logFile))
+	if err != nil || sharedPath != logFile || fileName != filepath.Base(logFile) {
+		t.Fatalf("shared file = %q %q, err = %v", fileName, sharedPath, err)
 	}
 
 	if !LogEditByID(ctx, officialGroupID, "edited line", rawMsgID) {

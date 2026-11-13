@@ -122,7 +122,7 @@ func TestOfficialQQUploadSceneURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "https://api.sgroup.qq.com/v2/groups/group%2Fid/upload_prepare"
+	want := "https://api.bot.qq.com/v2/groups/group%2Fid/upload_prepare"
 	if got != want {
 		t.Fatalf("upload URL = %q, want %q", got, want)
 	}

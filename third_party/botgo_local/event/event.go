@@ -3,14 +3,50 @@ package event
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/tidwall/gjson" // 由于回包的d 类型不确定，gjson 用于从回包json中提可d 并进行针瀵规€х殑瑙ｆ瀽
 
 	"github.com/sealdice/botgo/dto"
+	"github.com/sealdice/botgo/log"
 )
 
+// PanicError 表示事件处理器/过滤器/观察者发生了 panic。
+// 调用方可以用 IsPanic 判断，并决定丢弃事件还是重试。
+type PanicError struct {
+	Scope string
+	Value interface{}
+	Stack []byte
+}
+
+func (e *PanicError) Error() string {
+	if e == nil {
+		return "event panic"
+	}
+	return fmt.Sprintf("%s panic: %v\n%s", e.Scope, e.Value, e.Stack)
+}
+
+// IsPanic 判断错误是否由事件处理器 panic 产生。
+func IsPanic(err error) bool {
+	var target *PanicError
+	return errors.As(err, &target)
+}
+
+// NewPanicError 构造带堆栈的 panic 错误，供其它分发入口复用。
+func NewPanicError(scope string, value interface{}) error {
+	return &PanicError{Scope: scope, Value: value, Stack: debug.Stack()}
+}
+
+func logPanic(scope string, value interface{}) {
+	log.Errorf("[QQBot][event] %s panic: %v\n%s", scope, value, debug.Stack())
+}
+
 var eventParseFuncMapLock = new(sync.RWMutex)
+
+//nolint:exhaustive // 只处理 dispatch opcode
 var eventParseFuncMap = map[dto.OPCode]map[dto.EventType]eventParseFunc{
 	dto.WSDispatchEvent: {
 		dto.EventGuildCreate: guildHandler,
@@ -65,6 +101,11 @@ var eventParseFuncMap = map[dto.OPCode]map[dto.EventType]eventParseFunc{
 		dto.EventGroupDelRobot:        groupDelRobotHandler,
 		dto.EventGroupMemberAdd:       groupMemberAddHandler,
 		dto.EventGroupMemberRemove:    groupMemberRemoveHandler,
+		dto.EventGroupJoinRequest:     groupJoinRequestHandler,
+		dto.EventGroupMsgReceive:      groupMsgReceiveHandler,
+		dto.EventGroupMsgReject:       groupMsgRejectHandler,
+		dto.EventC2CMsgReceive:        c2cMsgReceiveHandler,
+		dto.EventC2CMsgReject:         c2cMsgRejectHandler,
 		dto.EventEnterAIO:             enterAIOHandler,
 	},
 }
@@ -89,7 +130,126 @@ func getHandler(opCode dto.OPCode, eventType dto.EventType) (eventParseFunc, boo
 type eventParseFunc func(event *dto.WSPayload, message []byte) error
 
 // ParseAndHandle 处理回调事件
-func ParseAndHandle(payload *dto.WSPayload) error {
+// Filter 事件过滤器。返回 false 时该事件不会继续投递。
+type Filter func(payload *dto.WSPayload) bool
+
+// Observer 事件观察者。用于转发、指标、日志等旁路逻辑。
+type Observer func(payload *dto.WSPayload)
+
+type filterEntry struct {
+	id uint64
+	fn Filter
+}
+
+type observerEntry struct {
+	id uint64
+	fn Observer
+}
+
+var (
+	filterMu    sync.RWMutex
+	filterSeq   uint64
+	filters     []filterEntry
+	observerMu  sync.RWMutex
+	observerSeq uint64
+	observers   []observerEntry
+)
+
+// RegisterFilter 注册事件过滤器，返回取消函数。
+func RegisterFilter(f Filter) func() {
+	if f == nil {
+		return func() {}
+	}
+	filterMu.Lock()
+	filterSeq++
+	id := filterSeq
+	filters = append(filters, filterEntry{id: id, fn: f})
+	filterMu.Unlock()
+	return func() {
+		filterMu.Lock()
+		defer filterMu.Unlock()
+		for i, entry := range filters {
+			if entry.id == id {
+				filters = append(filters[:i], filters[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
+// RegisterObserver 注册事件观察者，返回取消函数。
+func RegisterObserver(o Observer) func() {
+	if o == nil {
+		return func() {}
+	}
+	observerMu.Lock()
+	observerSeq++
+	id := observerSeq
+	observers = append(observers, observerEntry{id: id, fn: o})
+	observerMu.Unlock()
+	return func() {
+		observerMu.Lock()
+		defer observerMu.Unlock()
+		for i, entry := range observers {
+			if entry.id == id {
+				observers = append(observers[:i], observers[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
+func applyFilters(payload *dto.WSPayload) bool {
+	filterMu.RLock()
+	snapshot := append([]filterEntry(nil), filters...)
+	filterMu.RUnlock()
+	for _, entry := range snapshot {
+		ok := false
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logPanic("filter", r)
+				}
+			}()
+			ok = entry.fn(payload)
+		}()
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func notifyObservers(payload *dto.WSPayload) {
+	observerMu.RLock()
+	snapshot := append([]observerEntry(nil), observers...)
+	observerMu.RUnlock()
+	for _, entry := range snapshot {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logPanic("observer", r)
+				}
+			}()
+			entry.fn(payload)
+		}()
+	}
+}
+
+func ParseAndHandle(payload *dto.WSPayload) (err error) {
+	// 处理器 panic 不应该冒泡到 websocket 读循环/HTTP server，否则一条消息
+	// 就可能拖垮整个连接。这里统一转换成 PanicError，由调用方记录并决定丢弃。
+	defer func() {
+		if r := recover(); r != nil {
+			err = NewPanicError("event handler", r)
+		}
+	}()
+
+	if !applyFilters(payload) {
+		return nil
+	}
+	notifyObservers(payload)
+
 	// 指定类型的handler
 	if h, ok := getHandler(payload.OPCode, payload.Type); ok {
 		return h(payload, payload.RawMessage)
@@ -452,6 +612,66 @@ func groupMemberRemoveHandler(payload *dto.WSPayload, message []byte) error {
 	h := getHandlers(payload)
 	if h.GroupMemberRemove != nil {
 		return h.GroupMemberRemove(payload, data)
+	}
+	return nil
+}
+
+func groupJoinRequestHandler(payload *dto.WSPayload, message []byte) error {
+	data := &dto.WSGroupJoinRequestData{}
+	if err := ParseData(message, data); err != nil {
+		return err
+	}
+	h := getHandlers(payload)
+	if h.GroupJoinRequest != nil {
+		return h.GroupJoinRequest(payload, data)
+	}
+	return nil
+}
+
+func groupMsgReceiveHandler(payload *dto.WSPayload, message []byte) error {
+	data := &dto.WSGroupMsgReceiveData{}
+	if err := ParseData(message, data); err != nil {
+		return err
+	}
+	h := getHandlers(payload)
+	if h.GroupMsgReceive != nil {
+		return h.GroupMsgReceive(payload, data)
+	}
+	return nil
+}
+
+func groupMsgRejectHandler(payload *dto.WSPayload, message []byte) error {
+	data := &dto.WSGroupMsgRejectData{}
+	if err := ParseData(message, data); err != nil {
+		return err
+	}
+	h := getHandlers(payload)
+	if h.GroupMsgReject != nil {
+		return h.GroupMsgReject(payload, data)
+	}
+	return nil
+}
+
+func c2cMsgReceiveHandler(payload *dto.WSPayload, message []byte) error {
+	data := &dto.WSC2CMsgReceiveData{}
+	if err := ParseData(message, data); err != nil {
+		return err
+	}
+	h := getHandlers(payload)
+	if h.C2CMsgReceive != nil {
+		return h.C2CMsgReceive(payload, data)
+	}
+	return nil
+}
+
+func c2cMsgRejectHandler(payload *dto.WSPayload, message []byte) error {
+	data := &dto.WSC2CMsgRejectData{}
+	if err := ParseData(message, data); err != nil {
+		return err
+	}
+	h := getHandlers(payload)
+	if h.C2CMsgReject != nil {
+		return h.C2CMsgReject(payload, data)
 	}
 	return nil
 }

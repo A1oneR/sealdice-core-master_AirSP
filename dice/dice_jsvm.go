@@ -330,7 +330,9 @@ func (d *Dice) JsInit() {
 			if !ok {
 				return
 			}
-			(&d.Config).BanList.DeleteByID(d, id)
+			if err := d.Config.BanList.DeleteByID(d, id); err != nil {
+				panic(vm.NewGoError(err))
+			}
 		})
 		_ = ban.Set("getList", func() []BanListInfoItem {
 			var list []BanListInfoItem
@@ -763,6 +765,7 @@ func (d *Dice) JsInit() {
 		_ = seal.Set("replyGroup", ReplyGroup)
 		_ = seal.Set("replyPerson", ReplyPerson)
 		_ = seal.Set("replyToSender", ReplyToSender)
+		_ = seal.Set("replyToSenderWithActiveFallback", ReplyToSenderWithActiveFallback)
 		_ = seal.Set("replyToSenderMarkdown", ReplyToSenderMarkdown)
 		_ = seal.Set("replyToSenderWithKeyboard", ReplyToSenderWithKeyboard)
 		_ = seal.Set("replyGroupWithKeyboard", ReplyGroupWithKeyboard)

@@ -2,20 +2,26 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2" // resty 是一个优秀的 rest api 客户端，可以极大的减少开发基于 rest 标准接口求请求 of 封装工作量
+	"golang.org/x/oauth2"
+
 	"github.com/sealdice/botgo/constant"
 	"github.com/sealdice/botgo/errs"
 	"github.com/sealdice/botgo/log"
 	"github.com/sealdice/botgo/openapi"
 	"github.com/sealdice/botgo/version"
-	"golang.org/x/oauth2"
 )
 
 // MaxIdleConns 默认指定空闲连接池大小
@@ -75,7 +81,13 @@ func (o *openAPI) SetDebug(debug bool) openapi.OpenAPI {
 // Transport 透传请求
 func (o *openAPI) Transport(ctx context.Context, method, url string, body interface{}) ([]byte, error) {
 	resp, err := o.request(ctx).SetBody(body).Execute(method, url)
-	return resp.Body(), err
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, errs.ErrEmptyResponse
+	}
+	return resp.Body(), nil
 }
 
 // 初始化 client
@@ -85,6 +97,11 @@ func (o *openAPI) setupClient(appID string) {
 		SetLogger(log.DefaultLogger).
 		SetDebug(o.debug).
 		SetTimeout(o.timeout).
+		SetRetryCount(1).
+		AddRetryCondition(func(resp *resty.Response, _ error) bool {
+			// 11244: token 过期/不存在，强制刷新后重试一次。
+			return isTokenExpiredResponse(resp)
+		}).
 		SetHeader("User-Agent", version.String()).
 		SetHeader("X-Union-Appid", appID).
 		SetPreRequestHook(
@@ -96,15 +113,14 @@ func (o *openAPI) setupClient(appID string) {
 		).
 		OnBeforeRequest(
 			func(c *resty.Client, r *resty.Request) error {
-				tk, err := o.tokenSource.Token()
+				tk, err := safeToken(o.tokenSource)
 				if err != nil {
-					log.Errorf("[setupClient] retrieve token failed:%s", err)
+					log.Errorf("[QQBot][openapi] 获取 access_token 失败 app=%s: %v；请检查 AppID/AppSecret、网络和 token 接口状态", o.appID, err)
 					return err
 				}
+				// 只设置到 request 上，不能修改 client：并发请求会互相覆盖，存在 data race。
 				r.SetAuthScheme(tk.TokenType)
 				r.SetAuthToken(tk.AccessToken)
-				c.SetAuthScheme(tk.TokenType)
-				c.SetAuthToken(tk.AccessToken)
 
 				if r.Header == nil {
 					r.Header = make(http.Header)
@@ -125,8 +141,21 @@ func (o *openAPI) setupClient(appID string) {
 				o.lastTraceID = traceID
 				// 非成功含义的状态码，需要返回 error 供调用方识别
 				if !openapi.IsSuccessStatus(resp.StatusCode()) {
+					code, message, ok := parseBusinessError(resp.Body())
+					if !ok {
+						code = resp.StatusCode()
+						message = string(resp.Body())
+					}
+					o.logAPIError(resp, code, message, traceID)
 					o.handleError(resp)
 					return errs.New(resp.StatusCode(), string(resp.Body()), traceID)
+				}
+				// 官方部分接口会以 HTTP 200 + err_code/code 返回业务错误。
+				// 如果不解析，调用方会把失败当成功，媒体上传、被动回复过期等都会静默丢消息。
+				if code, message, ok := parseBusinessError(resp.Body()); ok {
+					o.logAPIError(resp, code, message, traceID)
+					o.handleError(resp)
+					return errs.New(code, message, traceID)
 				}
 				return nil
 			},
@@ -146,26 +175,127 @@ func (o *openAPI) GetAppID() string {
 	return o.appID
 }
 
-// errBody 请求出错情况下的body结构
-type errBody struct {
-	Message string `json:"message"`  // 错误原因
-	Code    int    `json:"code"`     // 错误码，后续废弃
-	ErrCode int    `json:"err_code"` // 错误码
-	TraceID string `json:"trace_id"` // 服务端traceID, 用于问题排查
+// logAPIError 输出一条能直接定位问题的 Warn 日志。
+// 注意：不要把完整请求体写进错误日志，消息内容可能包含用户隐私。
+func (o *openAPI) logAPIError(resp *resty.Response, code int, message, traceID string) {
+	method, path := "", ""
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode()
+		if resp.Request != nil {
+			method = resp.Request.Method
+			if resp.Request.RawRequest != nil && resp.Request.RawRequest.URL != nil {
+				path = resp.Request.RawRequest.URL.Path
+			}
+			if path == "" {
+				path = resp.Request.URL
+			}
+		}
+	}
+	message = truncateLog(message, 300)
+	if code == errs.APICodeTokenExpireOrNotExist {
+		log.Warnf("[QQBot][openapi] access_token 过期或不存在，正在强制刷新并重试 app=%s method=%s path=%s trace=%s",
+			o.appID, method, path, traceID)
+		return
+	}
+	log.Warnf("[QQBot][openapi] 请求返回错误 app=%s method=%s path=%s status=%d code=%d trace=%s message=%s；请检查机器人权限、参数或平台状态",
+		o.appID, method, path, status, code, traceID, message)
+}
+
+func truncateLog(s string, limit int) string {
+	if limit <= 0 || len(s) <= limit {
+		return s
+	}
+	return strings.ToValidUTF8(s[:limit], "") + "...(truncated)"
 }
 
 // handleError 处理openapi调用失败的情况
 func (o *openAPI) handleError(resp *resty.Response) {
-	var b errBody
-	err := json.Unmarshal(resp.Body(), &b)
-	if err != nil {
-		log.Errorf("parse errBody fail, err:%v, body:%s", err, string(resp.Body()))
+	code, _, ok := parseBusinessError(resp.Body())
+	if !ok {
 		return
 	}
-	if b.ErrCode == errs.APICodeTokenExpireOrNotExist || b.Code == errs.APICodeTokenExpireOrNotExist {
-		log.Errorf("token expire or not exist, update token")
-		_, _ = o.tokenSource.Token()
+	if code == errs.APICodeTokenExpireOrNotExist {
+		forceRefreshToken(o.tokenSource)
 	}
+}
+
+// parseBusinessError 解析 HTTP 200 响应体中的业务错误码。
+// 官方错误体通常为 {"err_code":40034005,"message":"...","trace_id":"..."}，
+// 部分旧接口使用 {"code":...}。
+func parseBusinessError(body []byte) (int, string, bool) {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 || body[0] != '{' {
+		return 0, "", false
+	}
+	var b struct {
+		Message string          `json:"message"`
+		Code    json.RawMessage `json:"code"`
+		ErrCode json.RawMessage `json:"err_code"`
+	}
+	if err := json.Unmarshal(body, &b); err != nil {
+		return 0, "", false
+	}
+	code := parseErrorCode(b.ErrCode)
+	if code == 0 {
+		code = parseErrorCode(b.Code)
+	}
+	if code == 0 {
+		return 0, "", false
+	}
+	message := b.Message
+	if message == "" {
+		message = string(body)
+	}
+	return code, message, true
+}
+
+func parseErrorCode(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	text := strings.Trim(strings.TrimSpace(string(raw)), `"`)
+	code, err := strconv.Atoi(text)
+	if err != nil {
+		return 0
+	}
+	return code
+}
+
+func isTokenExpiredResponse(resp *resty.Response) bool {
+	if resp == nil {
+		return false
+	}
+	code, _, ok := parseBusinessError(resp.Body())
+	return ok && code == errs.APICodeTokenExpireOrNotExist
+}
+
+func safeToken(tokenSource oauth2.TokenSource) (tk *oauth2.Token, err error) {
+	if tokenSource == nil {
+		return nil, errors.New("token source is nil")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tk = nil
+			err = fmt.Errorf("token source panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return tokenSource.Token()
+}
+
+func forceRefreshToken(tokenSource oauth2.TokenSource) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("[QQBot][openapi] 强制刷新 token 时 panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	if refreshable, ok := tokenSource.(interface {
+		ForceRefresh() (*oauth2.Token, error)
+	}); ok {
+		_, _ = refreshable.ForceRefresh()
+		return
+	}
+	_, _ = tokenSource.Token()
 }
 
 // respInfo 用于输出日志的时候格式化数据
@@ -178,9 +308,44 @@ func respInfo(resp *resty.Response) string {
 		resp.Header().Get(constant.HeaderTraceID),
 		resp.Status(),
 		resp.Time(),
-		string(bodyJSON),
-		string(resp.Body()),
+		redactLogBody(bodyJSON),
+		redactLogBody(resp.Body()),
 	)
+}
+
+// redactLogBody 对请求/响应 JSON 做最小化脱敏并截断，避免把消息正文、
+// 媒体 base64、token、签名等内容写进 Info 日志。
+func redactLogBody(raw []byte) string {
+	var v interface{}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return truncateLog(string(raw), 2048)
+	}
+	redactLogValue(v)
+	redacted, err := json.Marshal(v)
+	if err != nil {
+		return truncateLog(string(raw), 2048)
+	}
+	return truncateLog(string(redacted), 2048)
+}
+
+func redactLogValue(v interface{}) {
+	switch value := v.(type) {
+	case map[string]interface{}:
+		for key, child := range value {
+			switch strings.ToLower(key) {
+			case "content", "markdown", "file_data", "file_info",
+				"access_token", "token", "secret", "clientsecret",
+				"plain_token", "signature":
+				value[key] = "[REDACTED]"
+			default:
+				redactLogValue(child)
+			}
+		}
+	case []interface{}:
+		for _, child := range value {
+			redactLogValue(child)
+		}
+	}
 }
 func createTransport(localAddr net.Addr, idleConns int) *http.Transport {
 	dialer := &net.Dialer{

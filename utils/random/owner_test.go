@@ -1,7 +1,9 @@
 package random_test
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	ds "github.com/sealdice/dicescript"
@@ -45,6 +47,44 @@ func TestNewSourceForModeCreatesDistinctReaderSources(t *testing.T) {
 
 	if reflect.TypeOf(gm) == reflect.TypeOf(nist) {
 		t.Fatalf("gm and nist sources should not share the same concrete type: %T", gm)
+	}
+}
+
+func TestGlobalOwnerGMDisabledByDefault(t *testing.T) {
+	owner := randcore.NewEmptyGlobalOwner()
+	owner.RegisterSource(randcore.ModePCG, &fixedDiceSource{value: 1})
+
+	if owner.GMEnabled() {
+		t.Fatal("expected GM source to be disabled by default")
+	}
+	if err := owner.InitError(randcore.ModeGM); !errors.Is(err, randcore.ErrGMDisabled) {
+		t.Fatalf("InitError(gm) = %v, want ErrGMDisabled", err)
+	}
+	if got := owner.ReportGetText(randcore.ModeGM, 20); !strings.Contains(got, "未启用") {
+		t.Fatalf("expected gm disabled hint, got %q", got)
+	}
+}
+
+func TestNewGlobalOwnerSkipsGMByDefault(t *testing.T) {
+	owner := randcore.NewGlobalOwner(nil)
+	if owner.GMEnabled() {
+		t.Fatal("expected new global owner to skip GM source")
+	}
+	if err := owner.InitError(randcore.ModeGM); !errors.Is(err, randcore.ErrGMDisabled) {
+		t.Fatalf("InitError(gm) = %v, want ErrGMDisabled", err)
+	}
+}
+
+func TestGlobalOwnerRegisterGMSourceEnablesGM(t *testing.T) {
+	owner := randcore.NewEmptyGlobalOwner()
+	owner.RegisterSource(randcore.ModePCG, &fixedDiceSource{value: 1})
+	owner.RegisterSource(randcore.ModeGM, &fixedDiceSource{value: 2})
+
+	if !owner.GMEnabled() {
+		t.Fatal("expected GM source to be enabled after RegisterSource")
+	}
+	if err := owner.InitError(randcore.ModeGM); err != nil {
+		t.Fatalf("InitError(gm) = %v, want nil", err)
 	}
 }
 

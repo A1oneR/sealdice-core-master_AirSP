@@ -156,15 +156,18 @@ func TestExtensionStorageSkipsIdenticalWrites(t *testing.T) {
 	}
 }
 
-func TestExtensionStorageWindowsDoesNotAutoShrink(t *testing.T) {
+func TestExtensionStorageWindowsSafeAutoShrinkPolicy(t *testing.T) {
 	d := storageTestDice(t)
 	e := storageTestExt(t, d)
 	var config buntdb.Config
 	if err := e.Storage.ReadConfig(&config); err != nil {
 		t.Fatal(err)
 	}
-	if config.AutoShrinkDisabled != (runtime.GOOS == "windows") {
+	if config.AutoShrinkDisabled {
 		t.Fatalf("unexpected auto shrink policy on %s: %+v", runtime.GOOS, config)
+	}
+	if runtime.GOOS == "windows" && (config.AutoShrinkMinSize != 256*1024*1024 || config.AutoShrinkPercentage != 300 || config.OnShrink == nil) {
+		t.Fatal("Windows safe-shrink thresholds or callback missing")
 	}
 	if config.SyncPolicy != buntdb.EverySecond {
 		t.Fatal("durability policy changed")

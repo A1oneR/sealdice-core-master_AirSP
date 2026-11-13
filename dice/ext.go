@@ -443,13 +443,25 @@ func (i *ExtInfo) storageInitLocked() error {
 		d.Logger.Errorf("[扩展]:初始化扩展数据库失败，原因: %v，路径为：%s", err, fn)
 		return err
 	}
-	// buntdb v1.3.2 panics from its own goroutine if Windows file replacement
-	// fails. JS try/catch cannot catch this. Keep the append-only log online;
-	// compaction must be done separately while the core is stopped.
+	// The local BuntDB patch keeps both writers open during replacement. A
+	// sharing violation returns an error with the original writer intact;
+	// automatic retry is throttled rather than panicking from a goroutine.
 	if runtime.GOOS == "windows" {
 		var config buntdb.Config
 		if err = db.ReadConfig(&config); err == nil {
-			config.AutoShrinkDisabled = true
+			config.AutoShrinkDisabled = false
+			config.AutoShrinkMinSize = 256 * 1024 * 1024
+			config.AutoShrinkPercentage = 300 // four times the last compacted-size baseline
+			config.OnShrink = func(before, after int64, shrinkErr error) {
+				if d.Logger == nil {
+					return
+				}
+				if shrinkErr != nil {
+					d.Logger.Warnf("[扩展存储回收] %s 延后，原写入句柄保留: %v", i.Name, shrinkErr)
+				} else {
+					d.Logger.Infof("[扩展存储回收] %s: %d -> %d bytes", i.Name, before, after)
+				}
+			}
 			err = db.SetConfig(config)
 		}
 		if err != nil {
@@ -651,32 +663,17 @@ func (group *GroupInfo) SyncWrapperStatus(d *Dice) bool {
 		return false
 	}
 
-	// 过滤已删除的 wrapper（只检查 IsDeleted 标志，不检查 JsExtRegistry）
+	// 过滤无效条目；已删除（IsDeleted）的 wrapper 保留为墓碑：
+	// 群开启状态不因插件删除而丢失，重装后由 seal.ext.register 复用 wrapper 恢复
 	needsUpdate := false
 	newList := make([]*ExtInfo, 0, len(group.activatedExtList))
 
 	for _, wrapper := range group.activatedExtList {
 		if wrapper == nil {
-			continue
-		}
-
-		// 内置扩展（非 wrapper）直接保留
-		if !wrapper.IsWrapper {
-			newList = append(newList, wrapper)
-			continue
-		}
-
-		// 只检查 IsDeleted 标志（由 JsDelete/ExtRemove 明确设置）
-		if wrapper.IsDeleted {
 			needsUpdate = true
-			// 关闭 Storage（如果有的话）
-			if wrapper.Storage != nil {
-				_ = wrapper.StorageClose()
-			}
-			continue // 移除已删除的 wrapper
+			continue
 		}
-
-		newList = append(newList, wrapper) // 保留有效 wrapper
+		newList = append(newList, wrapper)
 	}
 
 	if needsUpdate {
@@ -857,6 +854,26 @@ func (group *GroupInfo) SyncExtensionsOnMessage(d *Dice) {
 	}
 
 	group.ensureInactivatedSet()
+	// 指针重解析：重装的插件（曾跨重启删除，条目为共享占位）换回真实扩展指针
+	extMap := make(map[string]*ExtInfo, len(d.ExtList))
+	for _, ext := range d.ExtList {
+		if ext != nil {
+			extMap[ext.Name] = ext
+		}
+	}
+	newList := make([]*ExtInfo, 0, len(group.activatedExtList))
+	for _, ext := range group.activatedExtList {
+		if ext == nil {
+			continue
+		}
+		if live := extMap[ext.Name]; live != nil && live != ext {
+			newList = append(newList, live)
+			continue
+		}
+		newList = append(newList, ext)
+	}
+	group.activatedExtList = newList
+
 	known := make(map[string]struct{}, len(group.activatedExtList)+len(group.InactivatedExtSet))
 	for _, ext := range group.activatedExtList {
 		if ext != nil {

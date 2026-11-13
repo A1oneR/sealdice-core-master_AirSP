@@ -25,13 +25,14 @@ import (
 	"sealdice-core/model"
 	"sealdice-core/utils/dboperator/engine"
 
+	"github.com/dop251/goja"
 	"github.com/golang-module/carbon"
 	ds "github.com/sealdice/dicescript"
 	rand2 "golang.org/x/exp/rand" //nolint:staticcheck // against my better judgment, but this was mandated due to a strongly held opinion from you know who
-
-	"github.com/dop251/goja"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v3"
+
+	"github.com/bytedance/sonic"
 )
 
 type SenderBase struct {
@@ -60,6 +61,8 @@ type Message struct {
 	GroupName           string      `json:"groupName"`
 	TmpUID              string      `json:"-"             yaml:"-"`
 	UITestReplySplitLen *int        `json:"-"             yaml:"-"`
+	UITestRole          string      `json:"-"             yaml:"-"`
+	UITestGroupAccess   string      `json:"-"             yaml:"-"`
 	// MentionedInfo carries platform-provided display names keyed by normalized
 	// or legacy mention user ID. It is runtime metadata and is not persisted.
 	MentionedInfo map[string]string `json:"-" yaml:"-"`
@@ -74,6 +77,24 @@ type Message struct {
 // }
 
 type GroupPlayerInfo model.GroupPlayerInfoBase
+
+// extJSONResolver 在 GroupInfo 反序列化时将扩展名解析为全局共享的 *ExtInfo。
+// json 解码无法传递 Dice 上下文，由 loadGroups 在加载期间临时设置。
+var extJSONResolver func(name string) *ExtInfo
+
+// extPlaceholderPool 未安装扩展（已删除/尚未装载）的共享占位池：name -> 占位 ExtInfo。
+// 所有群对同一名字复用同一指针，避免大量群引用已删除插件时逐群分配对象；
+// 条目保留在群激活列表中，插件重装后由 GetActivatedExtList 按名恢复为真实扩展。
+var extPlaceholderPool = new(SyncMap[string, *ExtInfo])
+
+// extNamePlaceholder 返回名字对应的共享占位对象
+func extNamePlaceholder(name string) *ExtInfo {
+	if p, ok := extPlaceholderPool.Load(name); ok && p != nil {
+		return p
+	}
+	p, _ := extPlaceholderPool.LoadOrStore(name, &ExtInfo{Name: name})
+	return p
+}
 
 type GroupInfo struct {
 	Active    bool                               `jsbind:"active" json:"active" yaml:"active"` // 是否在群内开启 - 过渡为象征意义
@@ -127,6 +148,23 @@ type GroupInfo struct {
 
 	/* Wrapper 架构 */
 	ExtAppliedTime int64 `json:"-" yaml:"-"` // 群组应用扩展的时间戳，运行时使用，不序列化（强制每次启动重新初始化）
+
+	UITest *UITestConfig `json:"uiTest,omitempty" yaml:"uiTest,omitempty"`
+}
+
+// UITestConfig stores persistent identities used by the UI command test page.
+// It is intentionally part of GroupInfo so UI: IDs follow the same persistence
+// lifecycle as other adapter users without introducing a second account table.
+type UITestConfig struct {
+	Initialized bool                     `json:"initialized" yaml:"initialized"`
+	Access      string                   `json:"access,omitempty" yaml:"access,omitempty"`
+	Members     map[string]*UITestMember `json:"members,omitempty" yaml:"members,omitempty"`
+}
+
+type UITestMember struct {
+	Role      string `json:"role" yaml:"role"`
+	AvatarKey string `json:"avatarKey" yaml:"avatarKey"`
+	Enabled   bool   `json:"enabled" yaml:"enabled"`
 }
 
 // GetActivatedExtList 获取激活的扩展列表，自动处理延迟初始化
@@ -156,9 +194,15 @@ func (g *GroupInfo) GetActivatedExtList(d *Dice) []*ExtInfo {
 	var newList []*ExtInfo
 	activated := make(map[string]bool)
 	for _, item := range g.activatedExtList {
-		if item != nil && extMap[item.Name] != nil {
-			newList = append(newList, extMap[item.Name])
+		if item == nil || item.Name == "" {
+			continue
+		}
+		if live := extMap[item.Name]; live != nil {
+			newList = append(newList, live)
 			activated[item.Name] = true
+		} else {
+			// 未安装（已删除）的扩展：保留条目以维持群的开启状态，重装后自动恢复
+			newList = append(newList, item)
 		}
 	}
 
@@ -249,14 +293,25 @@ type groupInfoJSON struct {
 	ActivatedExtList []*ExtInfo `json:"activatedExtList"`
 }
 
+// groupInfoDecodeJSON 在同一次解码中读取群信息和扩展名，避免构造完整 ExtInfo 占位对象。
+type groupInfoDecodeJSON struct {
+	*groupInfoAlias
+	ActivatedExtList []struct {
+		Name string `json:"name"`
+	} `json:"activatedExtList"`
+}
+
+// The default Sonic decoder aliases strings into the entire input. Copy only
+// the fields we keep so group names do not retain serialized extension metadata.
+var groupInfoJSONDecoder = sonic.Config{CopyString: true}.Froze()
+
 // MarshalJSON 自定义序列化，处理私有字段 activatedExtList
-// 同时过滤掉已删除的 wrapper（IsDeleted=true）
+// 已删除 wrapper（IsDeleted=true）的名字同样保留：群开启状态不因插件删除而丢失
 func (g *GroupInfo) MarshalJSON() ([]byte, error) {
 	g.extInitMu.Lock()
-	// 过滤掉已删除的 wrapper
 	var filteredList []*ExtInfo
 	for _, ext := range g.activatedExtList {
-		if ext != nil && !ext.IsDeleted {
+		if ext != nil {
 			filteredList = append(filteredList, ext)
 		}
 	}
@@ -269,15 +324,30 @@ func (g *GroupInfo) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON 自定义反序列化，处理私有字段 activatedExtList
+// 扩展名通过 extJSONResolver 直接解析为全局共享的 *ExtInfo 指针（见 loadGroups），
+// 未注册的扩展保留名字占位，由 GetActivatedExtList 决定去留
 func (g *GroupInfo) UnmarshalJSON(data []byte) error {
-	temp := &groupInfoJSON{
-		groupInfoAlias: (*groupInfoAlias)(g),
-	}
-	if err := json.Unmarshal(data, temp); err != nil {
+	decoded := groupInfoDecodeJSON{groupInfoAlias: (*groupInfoAlias)(g)}
+	if err := groupInfoJSONDecoder.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
+
+	var list []*ExtInfo
+	for _, ref := range decoded.ActivatedExtList {
+		if ref.Name == "" {
+			continue
+		}
+		if extJSONResolver != nil {
+			if ext := extJSONResolver(ref.Name); ext != nil {
+				list = append(list, ext)
+				continue
+			}
+		}
+		list = append(list, extNamePlaceholder(ref.Name))
+	}
+
 	g.extInitMu.Lock()
-	g.activatedExtList = temp.ActivatedExtList
+	g.activatedExtList = list
 	g.extInitMu.Unlock()
 	return nil
 }
@@ -827,12 +897,17 @@ type MsgContext struct {
 
 	deckDepth           int                                         // 抽牌递归深度
 	DeckPools           map[*DeckInfo]map[string]*ShuffleRandomPool // 不放回抽取的缓存
-	diceExprOverwrite   string                                      // 默认骰表达式覆盖
+	deckSnapshot        *deckDrawScope
+	deckPoolCatalog     uint64
+	deckIndexPools      map[string]*deckIndexPool
+	diceExprOverwrite   string // 默认骰表达式覆盖
 	SystemTemplate      *GameSystemTemplate
 	Censored            bool // 已检查过敏感词
 	SpamCheckedGroup    bool
 	SpamCheckedPerson   bool
 	UITestReplySplitLen *int
+	UITestRole          string
+	UITestGroupAccess   string
 
 	splitKeyMu  sync.RWMutex
 	splitKey    string
@@ -848,6 +923,25 @@ type MsgContext struct {
 //
 // MsgContext.Dice需要指向一个有效的Dice对象
 func (ctx *MsgContext) fillPrivilege(msg *Message) int {
+	if msg.Platform == "UI" && msg.UITestRole != "" {
+		switch msg.UITestRole {
+		case "owner":
+			ctx.PrivilegeLevel = 60
+		case "admin":
+			ctx.PrivilegeLevel = 50
+		case "inviter":
+			ctx.PrivilegeLevel = 40
+		case "master":
+			ctx.PrivilegeLevel = 100
+		case "blacklisted":
+			ctx.PrivilegeLevel = -30
+		default:
+			ctx.PrivilegeLevel = 0
+		}
+		ctx.GroupRoleLevel = ctx.PrivilegeLevel
+		return ctx.PrivilegeLevel
+	}
+
 	switch {
 	case msg.Sender.GroupRole == "owner":
 		ctx.PrivilegeLevel = 60 // 群主
@@ -897,6 +991,8 @@ func (s *IMSession) Execute(ep *EndPointInfo, msg *Message, runInSync bool) {
 	mctx.Session = s
 	mctx.EndPoint = ep
 	mctx.UITestReplySplitLen = msg.UITestReplySplitLen
+	mctx.UITestRole = msg.UITestRole
+	mctx.UITestGroupAccess = msg.UITestGroupAccess
 	log := d.Logger
 
 	// 处理命令
@@ -1716,6 +1812,9 @@ func (s *IMSession) OnGroupJoined(ctx *MsgContext, msg *Message) {
 	}
 	time.Sleep(2 * time.Second)
 	groupName := dm.TryGetGroupName(msg.GroupID)
+	welcomeCtx := ctx.ShallowCopy()
+	welcomeCtx.vm = nil
+	welcomeCtx.Player = &GroupPlayerInfo{}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -1726,12 +1825,11 @@ func (s *IMSession) OnGroupJoined(ctx *MsgContext, msg *Message) {
 		// 稍作等待后发送入群致词
 		time.Sleep(2 * time.Second)
 
-		ctx.Player = &GroupPlayerInfo{}
 		log.Infof("发送入群致辞，群: <%s>(%s)", groupName, msg.GroupID)
-		text := DiceFormatTmpl(ctx, "核心:骰子进群")
-		for _, i := range ctx.SplitText(text) {
-			doSleepQQ(ctx)
-			ReplyGroup(ctx, msg, strings.TrimSpace(i))
+		text := DiceFormatTmpl(welcomeCtx, "核心:骰子进群")
+		for _, i := range welcomeCtx.SplitText(text) {
+			doSleepQQ(welcomeCtx)
+			ReplyGroup(welcomeCtx, msg, strings.TrimSpace(i))
 		}
 	}()
 	txt := fmt.Sprintf("加入群组: <%s>(%s)", groupName, msg.GroupID)
@@ -2137,6 +2235,21 @@ func checkBan(ctx *MsgContext, msg *Message) (notReply bool) {
 				isWhiteGroup = true
 			}
 		}
+		if msg.Platform == "UI" {
+			switch ctx.UITestGroupAccess {
+			case "blacklisted":
+				isBanGroup = true
+			case "trusted":
+				isWhiteGroup = true
+			}
+		}
+	}
+
+	// UI test identities must exercise the same blocked-message boundary while
+	// avoiding sleeps, adapter side effects, and writes to the global ban list.
+	if msg.Platform == "UI" && ctx.PrivilegeLevel == -30 {
+		log.Infof("忽略 UI 测试黑名单用户消息: 来自<%s>(%s): %s", msg.Sender.Nickname, msg.Sender.UserID, msg.Message)
+		return true
 	}
 
 	banQuitGroup := func() {
@@ -2863,6 +2976,9 @@ func (ctx *MsgContext) ShallowCopy() *MsgContext {
 		AliasPrefixText:     ctx.AliasPrefixText,
 		deckDepth:           ctx.deckDepth,
 		DeckPools:           ctx.DeckPools,
+		deckSnapshot:        ctx.deckSnapshot,
+		deckPoolCatalog:     ctx.deckPoolCatalog,
+		deckIndexPools:      ctx.deckIndexPools,
 		diceExprOverwrite:   ctx.diceExprOverwrite,
 		SystemTemplate:      ctx.SystemTemplate,
 		Censored:            ctx.Censored,

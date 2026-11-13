@@ -24,7 +24,7 @@ func uploadV1(env UploadEnv) (string, string, error) {
 	if cacheValid && env.CacheValidator != nil {
 		cacheValid = env.CacheValidator(uploadTS, updateTS)
 	}
-	if cacheValid {
+	if !env.Force && cacheValid {
 		// 已有URL且上传时间晚于Log更新时间（最后录入时间），直接返回
 		env.Log.Infof(
 			"查询到之前上传的URL, 直接使用 Log:%s.%s 上传时间:%s 更新时间:%s URL:%s",

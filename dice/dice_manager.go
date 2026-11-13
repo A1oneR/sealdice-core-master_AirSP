@@ -303,6 +303,16 @@ func (dm *DiceManager) DiceSnapshot() []*Dice {
 	return append([]*Dice(nil), dm.Dice...)
 }
 
+// GetDice returns the primary instance used by the management APIs.
+func (dm *DiceManager) GetDice() *Dice {
+	dm.diceLock.RLock()
+	defer dm.diceLock.RUnlock()
+	if len(dm.Dice) == 0 {
+		return nil
+	}
+	return dm.Dice[0]
+}
+
 func (dm *DiceManager) appendDice(instance *Dice) {
 	dm.diceLock.Lock()
 	defer dm.diceLock.Unlock()

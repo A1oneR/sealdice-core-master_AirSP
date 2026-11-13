@@ -42,6 +42,7 @@ func Verify(secret string, header http.Header, httpBody []byte) (bool, error) {
 	content, err := genOriginalContent(header.Get(HeaderTimestamp), httpBody)
 	if err != nil {
 		log.Errorf("get original content error: %v", err)
+		return false, err
 	}
 	return ed25519.Verify(key.PublicKey, content, sigBuffer), nil
 }
@@ -56,6 +57,7 @@ func Generate(secret string, header http.Header, httpBody []byte) (string, error
 	content, err := genOriginalContent(header.Get(HeaderTimestamp), httpBody)
 	if err != nil {
 		log.Errorf("get original content error: %v", err)
+		return "", err
 	}
 	return hex.EncodeToString(ed25519.Sign(key.PrivateKey, content)), nil
 }
@@ -93,7 +95,7 @@ func decodeSigBuffer(signature string) ([]byte, error) {
 	}
 	sigBuf, err := hex.DecodeString(signature)
 	if err != nil {
-		return nil, fmt.Errorf("hex decode signature failed: %v", err)
+		return nil, fmt.Errorf("hex decode signature failed: %w", err)
 	}
 	if len(sigBuf) != ed25519.SignatureSize || sigBuf[63]&224 != 0 {
 		return nil, errors.New("signature decode result is not a valid buf")

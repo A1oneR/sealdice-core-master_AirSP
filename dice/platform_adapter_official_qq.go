@@ -31,6 +31,7 @@ import (
 	qqerrs "github.com/sealdice/botgo/errs"
 	"github.com/sealdice/botgo/event"
 	"github.com/sealdice/botgo/interaction/signature"
+	qqwebhook "github.com/sealdice/botgo/interaction/webhook"
 	"github.com/skip2/go-qrcode"
 
 	qqbot "github.com/sealdice/botgo"
@@ -62,7 +63,7 @@ var officialQQMediaUploadRetryCodes = map[int]struct{}{
 	40093001: {}, // 富媒体上传失败
 }
 
-func officialQQMediaUploadAPIErrorCode(err error) int {
+func officialQQAPIErrorCode(err error) int {
 	var apiErr *qqerrs.Err
 	if !errors.As(err, &apiErr) {
 		return 0
@@ -96,7 +97,7 @@ func isOfficialQQMediaUploadRetryable(err error) bool {
 		return true
 	}
 
-	code := officialQQMediaUploadAPIErrorCode(err)
+	code := officialQQAPIErrorCode(err)
 	if _, ok := officialQQMediaUploadRetryCodes[code]; ok {
 		return true
 	}
@@ -686,6 +687,7 @@ func (pa *PlatformAdapterOfficialQQ) connect(probe *OfficialQQAccountProbeResult
 			Addr:              addr,
 			Handler:           mux,
 			ReadHeaderTimeout: 3 * time.Second,
+			ReadTimeout:       10 * time.Second,
 		}
 
 		go func() {
@@ -1788,7 +1790,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 		}
 
 		if idType == OpenQQUserOpenid {
-			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, firstPage, keyboardObj, useMarkdown)
+			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, firstPage, keyboardObj, useMarkdown, flag == replyFlagOfficialQQActiveFallback)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -1846,7 +1848,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToPerson(ctx *MsgContext, uid string, t
 
 	for _, t := range textList {
 		if idType == OpenQQUserOpenid {
-			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, t, nil, useMarkdown)
+			msg, err := pa.sendC2CMsgRaw(activeCtx, activeRowID, userID, t, nil, useMarkdown, flag == replyFlagOfficialQQActiveFallback)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2354,7 +2356,7 @@ func (pa *PlatformAdapterOfficialQQ) uploadGroupMedia(qctx context.Context, grou
 }
 
 // sendC2CMsgRaw 发送单聊消息（使用msg_id被动回复）
-func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, userOpenID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, userOpenID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool, fallback ...bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -2372,15 +2374,13 @@ func (pa *PlatformAdapterOfficialQQ) sendC2CMsgRaw(ctx *MsgContext, rowMsgID, us
 		if toCreate.Media == nil && toCreate.Content == "" && toCreate.Markdown == nil && toCreate.MessageReference == nil {
 			return
 		}
-		// 主动消息（无 msg_id/event_id）需要排队限流
-		if toCreate.MsgID == "" && toCreate.EventID == "" {
-			if err := pa.waitC2CActiveQuota(qctx, userOpenID); err != nil {
-				pa.EndPoint.Session.Parent.Logger.Error("official qq 发送单聊消息失败：" + err.Error())
-				lastErr = err
-				return
-			}
-		}
-		res, err := pa.Api.PostC2CMessage(qctx, userOpenID, toCreate)
+		res, err := sendOfficialQQPacket(toCreate, len(fallback) != 0 && fallback[0],
+			func() error { return pa.waitC2CActiveQuota(qctx, userOpenID) },
+			func(packet *dto.MessageToCreate) (*dto.Message, error) {
+				return pa.Api.PostC2CMessage(qctx, userOpenID, packet)
+			},
+			pa.logActiveReplyFallback,
+		)
 		if err != nil {
 			pa.EndPoint.Session.Parent.Logger.Error("official qq 发送单聊消息失败：" + err.Error())
 			lastErr = err
@@ -2643,7 +2643,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 
 		switch idType {
 		case OpenQQGroupOpenid:
-			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj, useMarkdown)
+			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, firstPage, keyboardObj, useMarkdown, flag == replyFlagOfficialQQActiveFallback)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2681,7 +2681,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 	for _, t := range textList {
 		switch idType {
 		case OpenQQGroupOpenid:
-			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, t, nil, useMarkdown)
+			msg, err := pa.sendQQGroupMsgRaw(activeCtx, activeRowID, groupId, t, nil, useMarkdown, flag == replyFlagOfficialQQActiveFallback)
 			if err == nil && msg != nil {
 				pa.EndPoint.Session.OnMessageSend(ctx, &Message{
 					Platform:    "QQ",
@@ -2717,7 +2717,7 @@ func (pa *PlatformAdapterOfficialQQ) SendToGroup(ctx *MsgContext, uid string, te
 	}
 }
 
-func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID, groupID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool) (*dto.Message, error) {
+func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID, groupID string, text string, keyboardObj *keyboard.MessageKeyboard, forceMarkdown bool, fallback ...bool) (*dto.Message, error) {
 	qctx := context.Background()
 	elems := message.ConvertStringMessage(text)
 	var (
@@ -2735,15 +2735,13 @@ func (pa *PlatformAdapterOfficialQQ) sendQQGroupMsgRaw(ctx *MsgContext, rowMsgID
 		if toCreate.Media == nil && toCreate.Content == "" && toCreate.Markdown == nil && toCreate.MessageReference == nil {
 			return
 		}
-		// 主动消息排队限流
-		if toCreate.MsgID == "" && toCreate.EventID == "" {
-			if err := pa.waitGroupActiveQuota(qctx, groupID); err != nil {
-				pa.EndPoint.Session.Parent.Logger.Error("official qq 发送群聊消息失败：" + err.Error())
-				lastErr = err
-				return
-			}
-		}
-		res, err := pa.Api.PostGroupMessage(qctx, groupID, toCreate)
+		res, err := sendOfficialQQPacket(toCreate, len(fallback) != 0 && fallback[0],
+			func() error { return pa.waitGroupActiveQuota(qctx, groupID) },
+			func(packet *dto.MessageToCreate) (*dto.Message, error) {
+				return pa.Api.PostGroupMessage(qctx, groupID, packet)
+			},
+			pa.logActiveReplyFallback,
+		)
 		if err != nil {
 			pa.EndPoint.Session.Parent.Logger.Error("official qq 发送群聊消息失败：" + err.Error())
 			lastErr = err
@@ -3059,70 +3057,109 @@ func (pa *PlatformAdapterOfficialQQ) handleWebhookCallback(w http.ResponseWriter
 	s := pa.EndPoint.Session
 	log := s.Parent.Logger
 
-	// 读取请求
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Error("official qq webhook: 读取请求失败: ", err)
-		w.WriteHeader(http.StatusBadRequest)
+	pa.respondWebhook(w, r, func(payload *dto.WSPayload) {
+		go func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Errorf("official qq webhook: 处理事件异常: %v", rec)
+				}
+			}()
+			if err := event.ParseAndHandle(payload); err != nil {
+				log.Errorf("official qq webhook: 事件处理失败: %v", err)
+			}
+		}()
+	})
+}
+
+// Handle the public address challenge before event signature verification,
+// following upstream #1855 while retaining AirSP's own botgo connection stack.
+func (pa *PlatformAdapterOfficialQQ) respondWebhook(w http.ResponseWriter, r *http.Request, dispatch func(*dto.WSPayload)) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	defer r.Body.Close()
-
-	// 签名验证
-	if !pa.verifyWebhookSignature(body, r.Header) {
-		log.Error("official qq webhook: 签名验证失败")
+	if pa.AppSecret == "" {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if appID := r.Header.Get("X-Bot-Appid"); appID != "" && appID != pa.AppID {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	log.Debugf("official qq webhook: 收到请求 %s", string(body))
-
-	// 解析事件
-	var payload dto.WSPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		log.Error("official qq webhook: 解析事件失败: ", err)
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var limitErr *http.MaxBytesError
+		if errors.As(err, &limitErr) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		return
+	}
+	var envelope struct {
+		Op *dto.OPCode     `json:"op"`
+		D  json.RawMessage `json:"d"`
+	}
+	if json.Unmarshal(body, &envelope) != nil || envelope.Op == nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	// 保存原始消息数据，ParseAndHandle 使用
-	payload.RawMessage = body
-	payload.Session = &dto.Session{AppID: pa.AppID}
-
-	// 响应确认
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	response := map[string]interface{}{
-		"op": 12, // HTTP回调确认
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Error("official qq webhook: 响应确认失败: ", err)
-	}
-
-	// 异步处理事件
-	go func() {
-		defer func() {
-			if rec := recover(); rec != nil {
-				log.Errorf("official qq webhook: 处理事件异常: %v", rec)
-			}
-		}()
-		if err := event.ParseAndHandle(&payload); err != nil {
-			log.Errorf("official qq webhook: 事件处理失败: %v", err)
+	if *envelope.Op == dto.HTTPCallbackValidation {
+		var challenge dto.WHValidationReq
+		if json.Unmarshal(envelope.D, &challenge) != nil ||
+			!officialQQWebhookTimestamp.MatchString(challenge.EventTs) ||
+			!officialQQWebhookChallengeToken.MatchString(challenge.PlainToken) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
-	}()
+		ack := qqwebhook.GenValidationACK(&challenge, r.Header, pa.AppSecret)
+		if len(ack) == 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(ack)
+		return
+	}
+	if !officialQQWebhookTimestamp.MatchString(r.Header.Get(signature.HeaderTimestamp)) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if pass, err := signature.Verify(pa.AppSecret, r.Header, body); err != nil || !pass {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	switch *envelope.Op {
+	case dto.WSHeartbeat:
+		var seq uint32
+		if json.Unmarshal(envelope.D, &seq) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = io.WriteString(w, qqwebhook.GenHeartbeatACK(seq))
+	case dto.WSDispatchEvent:
+		var payload dto.WSPayload
+		if json.Unmarshal(body, &payload) != nil || payload.Type == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		payload.RawMessage = body
+		payload.Session = &dto.Session{AppID: pa.AppID}
+		_, _ = io.WriteString(w, qqwebhook.GenDispatchACK(true))
+		dispatch(&payload)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+	}
 }
 
-// verifyWebhookSignature 验证Webhook签名
-func (pa *PlatformAdapterOfficialQQ) verifyWebhookSignature(body []byte, header http.Header) bool {
-	if pa.AppSecret == "" {
-		return true
-	}
-	pass, err := signature.Verify(pa.AppSecret, header, body)
-	if err != nil {
-		return false
-	}
-	return pass
-}
+var (
+	officialQQWebhookTimestamp = regexp.MustCompile(`^[0-9]{1,20}$`)
+	// Limit unauthenticated signing to an opaque challenge, never a JSON event.
+	officialQQWebhookChallengeToken = regexp.MustCompile(`^[A-Za-z0-9_+/=-]{1,256}$`)
+)
 
 type C2CRichMediaMessage struct {
 	FileType   int    `json:"file_type"`
