@@ -30,3 +30,8 @@ go.work.sum
 # Temp directories and backup archives
 tmp/
 /*.zip
+/static/v2ui/dist/
+/ui/src/api/generated/
+/api/v2/deck/cache/
+/api/v2/extension/temp/
+/dist/

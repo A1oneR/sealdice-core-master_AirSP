@@ -453,8 +453,9 @@ func ReplyToSender(ctx *MsgContext, msg *Message, text string) {
 		return
 	}
 	replyCtx := ctx.captureReplyContext()
+	nameCard := buildOfficialQQNameCardLine(ctx)
 	panicHandler.Once(logger.M(), func() {
-		ReplyToSenderRaw(replyCtx, msg, text, "")
+		replyToSenderRaw(replyCtx, msg, text, "", true, false, nameCard)
 	})
 }
 
@@ -469,8 +470,9 @@ func ReplyToSenderWithActiveFallback(ctx *MsgContext, msg *Message, text string)
 		return
 	}
 	replyCtx := ctx.captureReplyContext()
+	nameCard := buildOfficialQQNameCardLine(ctx)
 	panicHandler.Once(logger.M(), func() {
-		ReplyToSenderRaw(replyCtx, msg, text, replyFlagOfficialQQActiveFallback)
+		replyToSenderRaw(replyCtx, msg, text, replyFlagOfficialQQActiveFallback, true, false, nameCard)
 	})
 }
 
@@ -483,8 +485,9 @@ func ReplyToSenderMarkdown(ctx *MsgContext, msg *Message, text string) {
 		return
 	}
 	replyCtx := ctx.captureReplyContext()
+	nameCard := buildOfficialQQNameCardLine(ctx)
 	panicHandler.Once(logger.M(), func() {
-		ReplyToSenderRaw(replyCtx, msg, text, replyFlagOfficialQQMarkdown)
+		replyToSenderRaw(replyCtx, msg, text, replyFlagOfficialQQMarkdown, true, false, nameCard)
 	})
 }
 
@@ -493,8 +496,10 @@ func ReplyToSenderNoCheck(ctx *MsgContext, msg *Message, text string) {
 		logger.M().Errorf("ReplyToSenderNoCheck 被调用，但没有正确传递参数！请检查您的参数！: ctx=%v, msg=%v", ctx, msg)
 		return
 	}
+	replyCtx := ctx.captureReplyContext()
+	text = withOfficialQQNameCard(ctx, text)
 	panicHandler.Once(logger.M(), func() {
-		replyToSenderRawNoCheck(ctx, msg, text, "")
+		replyToSenderRawNoCheck(replyCtx, msg, text, "")
 	})
 }
 
@@ -507,7 +512,7 @@ func ReplyToSenderBypassIntercept(ctx *MsgContext, msg *Message, text string) {
 	}
 	replyCtx := ctx.captureReplyContext()
 	panicHandler.Once(logger.M(), func() {
-		replyToSenderRaw(replyCtx, msg, text, "", false, true)
+		replyToSenderRaw(replyCtx, msg, text, "", false, true, "")
 	})
 }
 
@@ -520,7 +525,7 @@ func ReplyPersonBypassIntercept(ctx *MsgContext, msg *Message, text string) {
 	}
 	replyCtx := ctx.captureReplyContext()
 	panicHandler.Once(logger.M(), func() {
-		replyPersonRaw(replyCtx, msg, text, "", false, true)
+		replyPersonRaw(replyCtx, msg, text, "", false, true, "")
 	})
 }
 
@@ -535,10 +540,10 @@ func (ctx *MsgContext) captureReplyContext() *MsgContext {
 }
 
 func ReplyGroupRaw(ctx *MsgContext, msg *Message, text string, flag string) {
-	replyGroupRaw(ctx, msg, text, flag, true, false)
+	replyGroupRaw(ctx, msg, text, flag, true, false, buildOfficialQQNameCardLine(ctx))
 }
 
-func replyGroupRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool) {
+func replyGroupRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool, nameCard string) {
 	if ctx.AliasPrefixText != "" {
 		text = ctx.AliasPrefixText + text
 		ctx.AliasPrefixText = ""
@@ -548,6 +553,7 @@ func replyGroupRaw(ctx *MsgContext, msg *Message, text string, flag string, chec
 		ctx.DelegateText = ""
 	}
 
+	text = prependOfficialQQNameCard(nameCard, text)
 	if checkRateLimit && ctx.Dice.Config.RateLimitEnabled && msg.Platform == "QQ" {
 		if !spamCheckPerson(ctx, msg) {
 			spamCheckGroup(ctx, msg)
@@ -616,10 +622,10 @@ func ReplyGroup(ctx *MsgContext, msg *Message, text string) {
 }
 
 func ReplyPersonRaw(ctx *MsgContext, msg *Message, text string, flag string) {
-	replyPersonRaw(ctx, msg, text, flag, true, false)
+	replyPersonRaw(ctx, msg, text, flag, true, false, buildOfficialQQNameCardLine(ctx))
 }
 
-func replyPersonRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool) {
+func replyPersonRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool, nameCard string) {
 	if ctx.AliasPrefixText != "" {
 		text = ctx.AliasPrefixText + text
 		ctx.AliasPrefixText = ""
@@ -629,6 +635,7 @@ func replyPersonRaw(ctx *MsgContext, msg *Message, text string, flag string, che
 		ctx.DelegateText = ""
 	}
 
+	text = prependOfficialQQNameCard(nameCard, text)
 	if checkRateLimit && ctx.Dice.Config.RateLimitEnabled && msg.Platform == "QQ" {
 		spamCheckPerson(ctx, msg)
 	}
@@ -664,11 +671,11 @@ func replyPersonRaw(ctx *MsgContext, msg *Message, text string, flag string, che
 	replyPersonRawNoCheck(ctx, msg, text, flag)
 }
 
-func replyToSenderRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool) {
+func replyToSenderRaw(ctx *MsgContext, msg *Message, text string, flag string, checkRateLimit bool, bypassIntercept bool, nameCard string) {
 	if msg.MessageType == "group" {
-		replyGroupRaw(ctx, msg, text, flag, checkRateLimit, bypassIntercept)
+		replyGroupRaw(ctx, msg, text, flag, checkRateLimit, bypassIntercept, nameCard)
 	} else {
-		replyPersonRaw(ctx, msg, text, flag, checkRateLimit, bypassIntercept)
+		replyPersonRaw(ctx, msg, text, flag, checkRateLimit, bypassIntercept, nameCard)
 	}
 }
 

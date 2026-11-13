@@ -1,4 +1,4 @@
-﻿package v1
+package v1
 
 import (
 	"fmt"
@@ -33,13 +33,39 @@ const (
 	retractC2cMessageURI   uri = "/v2/users/{user_id}/messages/{message_id}"
 	retractGroupMessageURI uri = "/v2/groups/{group_id}/messages/{message_id}"
 
+	groupMembersURI   uri = "/v2/groups/{group_openid}/members"
+	groupMemberURI    uri = "/v2/groups/{group_openid}/members/{member_openid}"
+	groupInfoURI      uri = "/v2/groups/{group_openid}/info"
+	groupBotStateURI  uri = "/v2/groups/{group_openid}/bot_state"
+	streamMessagesURI uri = "/v2/users/{user_openid}/stream_messages"
+
+	generateURLLinkURI uri = "/v2/generate_url_link"
+
+	groupBatchRemoveMembersURI  uri = "/v2/groups/{group_openid}/batch_remove_members"
+	groupMemberBlacklistURI     uri = "/v2/groups/{group_openid}/member_blacklist"
+	groupRestrictChatSettingURI uri = "/v2/groups/{group_openid}/restrict_chat_setting"
+	groupJoinRequestListURI     uri = "/v2/groups/{group_openid}/join_request_list"
+	groupApprovalJoinRequestURI uri = "/v2/groups/{group_openid}/approval_join_request/{member_openid}"
+
+	joinApprovalStrategyURI          uri = "/v2/groups/join_approval_strategy"
+	joinApprovalStrategyItemURI      uri = "/v2/groups/join_approval_strategy/{strategy_id}"
+	joinApprovalStrategyExecuteURI   uri = "/v2/groups/join_approval_strategy/{strategy_id}/execute"
+	joinApprovalStrategyWhitelistURI uri = "/v2/groups/join_approval_strategy/{strategy_id}/whitelist_users"
+
+	forumThreadsURI uri = "/channels/{channel_id}/threads"
+
+	menuURI        uri = "/v2/menu"
+	panelsURI      uri = "/v2/panels"
+	panelURI       uri = "/v2/panels/{panel_id}"
+	panelTargetURI uri = "/v2/panels/{panel_id}/target"
+
 	messageURI uri = "/channels/{channel_id}/messages/{message_id}"
 
 	userMeURI       uri = "/users/@me"
 	userMeGuildsURI uri = "/users/@me/guilds"
 	userMeDMURI     uri = "/users/@me/dms"
 
-	gatewayURI    uri = "/gateway" // nolint
+	gatewayURI    uri = "/gateway"
 	gatewayBotURI uri = "/gateway/bot"
 
 	audioControlURI uri = "/channels/{channel_id}/audio"
@@ -81,18 +107,6 @@ const (
 
 	settingGuideURI   uri = "/channels/{channel_id}/settingguide"
 	dmSettingGuideURI uri = "/dms/{guild_id}/settingguide"
-
-	// 私聊
-	userMessageURI uri = "/v2/users/{openid}/messages"
-	userFileURI    uri = "/v2/users/{openid}/files"
-
-	// 群聊
-	groupMessageURI uri = "/v2/groups/{group_openid}/messages"
-	groupFileURI    uri = "/v2/groups/{group_openid}/files"
-	groupMember     uri = "/v2/groups/{group_openid}/members"
-
-	// 频道
-	channelMessageURI uri = "/channels/{channel_id}/messages"
 )
 
 // getURL 获取接口地址，会处理沙箱环境判断

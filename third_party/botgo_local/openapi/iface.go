@@ -2,11 +2,13 @@ package openapi
 
 import (
 	"context"
+	"io"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/sealdice/botgo/dto"
 	"github.com/sealdice/botgo/openapi/options"
-	"golang.org/x/oauth2"
 )
 
 // OpenAPI openapi 完整实现
@@ -292,4 +294,126 @@ type WebhookAPI interface {
 // MessageSettingAPI 频道消息设置接口
 type MessageSettingAPI interface {
 	GetMessageSetting(ctx context.Context, guildID string) (*dto.MessageSetting, error)
+}
+
+// GroupAPI 群信息/群成员接口。
+// 这是一个可选扩展接口，没有合入 OpenAPI，避免破坏第三方对 OpenAPI 的实现。
+// 使用方式：
+//
+//	if g, ok := api.(openapi.GroupAPI); ok { g.GetGroupMembers(...) }
+type GroupAPI interface {
+	// GetGroupMembers 获取群成员列表，cursor 为空表示第一页
+	GetGroupMembers(ctx context.Context, groupOpenID, cursor string) (*dto.GetGroupMembersResp, error)
+	// GetGroupMember 获取群成员信息
+	GetGroupMember(ctx context.Context, groupOpenID, memberOpenID string) (*dto.GroupMember, error)
+	// GetGroupInfo 获取群基本信息
+	GetGroupInfo(ctx context.Context, groupOpenID string) (*dto.GroupInfo, error)
+	// GetBotState 获取机器人群内状态
+	GetBotState(ctx context.Context, groupOpenID string) (*dto.GroupBotState, error)
+}
+
+// FormFileAPI 频道图片表单上传接口（可选扩展，未合入 OpenAPI）。
+type FormFileAPI interface {
+	// PostFormFileImage 频道图片表单上传
+	PostFormFileImage(ctx context.Context, channelID string, m map[string]string, path string) (*dto.Message, error)
+	// PostFormFileReaderImage 频道图片表单上传（Reader）
+	PostFormFileReaderImage(
+		ctx context.Context, channelID string, m map[string]string, filename string, r io.Reader,
+	) (*dto.Message, error)
+	// PostMessageMultipart 发送频道消息（multipart/form-data，可带 file_image）
+	PostMessageMultipart(
+		ctx context.Context, channelID string, msg *dto.MessageToCreate, fileImageData []byte,
+		opt ...options.Option,
+	) (*dto.Message, error)
+}
+
+// ForumAPI 论坛帖子接口（可选扩展，未合入 OpenAPI）。
+type ForumAPI interface {
+	// PostForumThread 发表帖子
+	PostForumThread(ctx context.Context, channelID string, msg *dto.ForumThreadToCreate,
+		opt ...options.Option) (*dto.ForumThreadResp, error)
+}
+
+// StreamMessageAPI 流式消息接口（可选扩展，未合入 OpenAPI）。
+type StreamMessageAPI interface {
+	// PostStreamMessage 流式发送单聊消息
+	PostStreamMessage(ctx context.Context, userOpenID string, msg *dto.StreamMessageToCreate) (
+		*dto.StreamMessageResp, error)
+}
+
+// ShareAPI 机器人分享链接接口（可选扩展，未合入 OpenAPI）。
+type ShareAPI interface {
+	// GenerateURLLink 生成机器人分享链接
+	GenerateURLLink(ctx context.Context, callbackData string) (*dto.GenerateURLLinkResp, error)
+}
+
+// GroupManageAPI 群管理接口（可选扩展，未合入 OpenAPI）。
+type GroupManageAPI interface {
+	// BatchRemoveMembers 群成员批量移除，单次最多 20 个
+	BatchRemoveMembers(ctx context.Context, groupOpenID string, req *dto.BatchRemoveMembersReq) (
+		*dto.BatchRemoveMembersResp, error)
+	// GetGroupBlacklist 查询群黑名单
+	GetGroupBlacklist(ctx context.Context, groupOpenID, cursor string, limit int) (
+		*dto.GetGroupBlacklistResp, error)
+	// UpdateGroupBlacklist 群黑名单操作
+	UpdateGroupBlacklist(ctx context.Context, groupOpenID string, req *dto.UpdateGroupBlacklistReq) (
+		*dto.UpdateGroupBlacklistResp, error)
+	// GetGroupMuteSetting 查询群禁言状态
+	GetGroupMuteSetting(ctx context.Context, groupOpenID string) (*dto.GroupMuteSetting, error)
+	// SetGroupMute 设置群成员禁言
+	SetGroupMute(ctx context.Context, groupOpenID string, req *dto.SetGroupMuteReq) error
+}
+
+// JoinRequestAPI 入群申请接口（可选扩展，未合入 OpenAPI）。
+type JoinRequestAPI interface {
+	// ListJoinRequests 拉取入群申请列表
+	ListJoinRequests(ctx context.Context, groupOpenID, cursor string, limit int) (
+		*dto.GetJoinRequestsResp, error)
+	// ApproveJoinRequest 审批入群申请
+	ApproveJoinRequest(ctx context.Context, groupOpenID, memberOpenID string, req *dto.ApproveJoinRequestReq) error
+}
+
+// JoinApprovalStrategyAPI 入群自动审批策略接口（可选扩展，未合入 OpenAPI）。
+type JoinApprovalStrategyAPI interface {
+	// ListJoinApprovalStrategies 查询策略列表
+	ListJoinApprovalStrategies(ctx context.Context, cursor string, limit int) (
+		*dto.GetJoinApprovalStrategiesResp, error)
+	// CreateJoinApprovalStrategy 创建策略
+	CreateJoinApprovalStrategy(ctx context.Context, req *dto.CreateJoinApprovalStrategyReq) (
+		*dto.CreateJoinApprovalStrategyResp, error)
+	// UpdateJoinApprovalStrategy 修改策略
+	UpdateJoinApprovalStrategy(ctx context.Context, strategyID string, req *dto.UpdateJoinApprovalStrategyReq) (
+		*dto.UpdateJoinApprovalStrategyResp, error)
+	// DeleteJoinApprovalStrategy 删除策略
+	DeleteJoinApprovalStrategy(ctx context.Context, strategyID string) error
+	// ExecuteJoinApprovalStrategy 执行策略
+	ExecuteJoinApprovalStrategy(ctx context.Context, strategyID string) error
+	// UpdateJoinApprovalStrategyWhitelist 修改策略白名单
+	UpdateJoinApprovalStrategyWhitelist(
+		ctx context.Context, strategyID string, req *dto.UpdateJoinApprovalWhitelistReq,
+	) (*dto.UpdateJoinApprovalWhitelistResp, error)
+}
+
+// MenuAPI 全局自定义菜单接口（可选扩展，未合入 OpenAPI）。
+type MenuAPI interface {
+	// GetMenu 查询全局自定义菜单
+	GetMenu(ctx context.Context) (*dto.GetMenuResp, error)
+	// PutMenu 修改全局自定义菜单
+	PutMenu(ctx context.Context, req *dto.PutMenuReq) (*dto.PutMenuResp, error)
+}
+
+// PanelAPI 指令面板接口（可选扩展，未合入 OpenAPI）。
+type PanelAPI interface {
+	// ListPanels 查询指令面板列表
+	ListPanels(ctx context.Context, scope, cursor string, limit int) (*dto.ListPanelsResp, error)
+	// CreatePanel 创建指令面板
+	CreatePanel(ctx context.Context, req *dto.CreatePanelReq) (*dto.CreatePanelResp, error)
+	// GetPanel 查询指令面板详情
+	GetPanel(ctx context.Context, panelID string) (*dto.GetPanelResp, error)
+	// UpdatePanel 修改指令面板
+	UpdatePanel(ctx context.Context, panelID string, req *dto.UpdatePanelReq) (*dto.UpdatePanelResp, error)
+	// DeletePanel 删除指令面板
+	DeletePanel(ctx context.Context, panelID string) error
+	// UpdatePanelTarget 修改指令面板关联对象
+	UpdatePanelTarget(ctx context.Context, panelID string, req *dto.UpdatePanelTargetReq) error
 }

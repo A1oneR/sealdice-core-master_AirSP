@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -71,8 +72,22 @@ func ensureGroupLogState(ctx *MsgContext, group *GroupInfo) GroupLogState {
 	return getGroupLogState(group)
 }
 
-func SetPlayerGroupCardByTemplate(ctx *MsgContext, tmpl string) (string, error) {
-	if ctx.SystemTemplate == nil {
+// EvalPlayerGroupCardTemplate 只求值 .sn 模板，不调用平台改名接口。
+// 求值 panic 转为 error，避免名片异常中断正文回复。
+func EvalPlayerGroupCardTemplate(ctx *MsgContext, tmpl string) (result string, err error) {
+	if ctx == nil || ctx.Dice == nil {
+		return "", errors.New("无法求值名片模板：上下文为空")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			result = ""
+			err = fmt.Errorf("名片模板求值异常: %v", r)
+			if ctx.Dice.Logger != nil {
+				ctx.Dice.Logger.Errorf("%v\n%s", err, debug.Stack())
+			}
+		}
+	}()
+	if ctx.SystemTemplate == nil && ctx.Group != nil {
 		ctx.SystemTemplate = ctx.Group.GetCharTemplate(ctx.Dice)
 	}
 	config := ctx.GenDefaultRollVmConfig()
@@ -81,11 +96,26 @@ func SetPlayerGroupCardByTemplate(ctx *MsgContext, tmpl string) (string, error) 
 	}
 	v := ctx.EvalFString(tmpl, config)
 	if v.vm.Error != nil {
-		ctx.Dice.Logger.Infof("SN指令模板错误: %v", v.vm.Error.Error())
 		return "", v.vm.Error
 	}
 
-	text := v.ToString()
+	return v.ToString(), nil
+}
+
+func SetPlayerGroupCardByTemplate(ctx *MsgContext, tmpl string) (string, error) {
+	text, err := EvalPlayerGroupCardTemplate(ctx, tmpl)
+	if err != nil {
+		if ctx != nil && ctx.Dice != nil && ctx.Dice.Logger != nil {
+			ctx.Dice.Logger.Infof("SN指令模板错误: %v", err.Error())
+		}
+		return "", err
+	}
+
+	// 官方 QQ 没有修改群名片的能力，名片改由回复顶部的状态栏承载。
+	if ctx.EndPoint == nil || ctx.EndPoint.Adapter == nil || isOfficialQQEndpoint(ctx.EndPoint) {
+		return text, nil
+	}
+
 	if ctx.EndPoint.Platform == "QQ" && len(text) >= 60 { // Note(Xiangze-Li): 2023-08-09实测群名片长度限制为59个英文字符, 20个中文字符是可行的, 但分别判断过于繁琐
 		return text, ErrGroupCardOverlong
 	}
@@ -267,7 +297,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 						return
 					}
 				}
-				unofficial, fn, notice, err := logSendToBackend(ctx, gid, lname, true)
+				unofficial, fn, notice, err := logSendToBackend(ctx, gid, lname, true, false)
 				if err != nil {
 					reason := strings.TrimPrefix(err.Error(), "#")
 					VarSetValueStr(ctx, "$t错误原因", reason)
@@ -770,7 +800,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 	cmdSn := &CmdItemInfo{
 		Name:               "sn",
 		ShortHelp:          helpSn,
-		Help:               "跑团名片(需要管理权限):\n" + helpSn,
+		Help:               "跑团名片(部分平台需要管理权限):\n" + helpSn,
 		CheckCurrentBotOn:  true,
 		CheckMentionOthers: true,
 		HelpFunc: func(isShort bool) string {
@@ -802,7 +832,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 			if isShort {
 				return text
 			}
-			return "跑团名片(需要管理权限):\n" + text
+			return "跑团名片(部分平台需要管理权限):\n" + text
 		},
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
 			val := cmdArgs.GetArgN(1)
@@ -1298,10 +1328,15 @@ func logExportFileURI(filePath string) string {
 }
 
 func LogSendToBackend(ctx *MsgContext, groupID string, logName string) (bool, string, string, error) {
-	return logSendToBackend(ctx, groupID, logName, false)
+	return logSendToBackend(ctx, groupID, logName, false, false)
 }
 
-func logSendToBackend(ctx *MsgContext, groupID string, logName string, skipResolve bool) (bool, string, string, error) {
+func LogSendToBackendByInfo(ctx *MsgContext, logInfo *model.LogInfo, force bool) (bool, string, error) {
+	unofficial, link, _, err := logSendToBackend(ctx, logInfo.GroupID, logInfo.Name, true, force)
+	return unofficial, link, err
+}
+
+func logSendToBackend(ctx *MsgContext, groupID string, logName string, skipResolve, force bool) (bool, string, string, error) {
 	dice := ctx.Dice
 	groupID = resolveLogStorageGroupID(groupID)
 	dirPath := filepath.Join(dice.BaseConfig.DataDir, "log-exports")
@@ -1337,6 +1372,7 @@ func logSendToBackend(ctx *MsgContext, groupID string, logName string, skipResol
 		LogName:   logName,
 		UniformID: uploadUniformID,
 		GroupID:   groupID,
+		Force:     force,
 
 		ResolveIdentity: ResolveOfficialQQLogIdentity,
 		CacheValidator: func(uploadTS, updateTS int64) bool {

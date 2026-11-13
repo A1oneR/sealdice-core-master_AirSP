@@ -142,6 +142,63 @@ func GetLogTxtAndParquetFile(env UploadEnv) (*os.File, *bytes.Buffer, error) {
 	return tempLog, buf, nil
 }
 
+func GetLogParquetBytes(env UploadEnv) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	writer := parquet.NewGenericWriter[model.LogOneItemParquet](
+		buf,
+		parquet.Compression(&zstd.Codec{}),
+		parquet.MaxRowsPerRowGroup(4000),
+	)
+
+	counter := 0
+	currentCursor := paginator.Cursor{}
+
+	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	resultCh := make(chan error, 1)
+	go func() {
+		defer close(resultCh)
+
+		for {
+			select {
+			case <-ctxWithTimeout.Done():
+				resultCh <- errors.New("日志导出超时（10秒限制），请尝试减少数据量或联系管理员")
+				return
+			default:
+				cursorLines, cursor, err0 := service.LogGetExportCursorLines(env.Db, env.GroupID, env.LogName, currentCursor)
+				if err0 != nil {
+					resultCh <- err0
+					return
+				}
+
+				counter += len(cursorLines)
+				if _, err0 = writer.Write(cursorLines); err0 != nil {
+					resultCh <- err0
+					return
+				}
+
+				if cursor.After == nil {
+					resultCh <- nil
+					return
+				}
+				currentCursor.After = cursor.After
+			}
+		}
+	}()
+
+	if err := <-resultCh; err != nil {
+		return nil, err
+	}
+	if counter == 0 {
+		return nil, errors.New("此log不存在，或条目数为空，名字是否正确？")
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
 // 一个不那么激进的改版
 func uploadV105(env UploadEnv) (string, string, error) {
 	_ = os.MkdirAll(env.Dir, 0o755)
@@ -151,7 +208,7 @@ func uploadV105(env UploadEnv) (string, string, error) {
 	if cacheValid && env.CacheValidator != nil {
 		cacheValid = env.CacheValidator(uploadTS, updateTS)
 	}
-	if cacheValid {
+	if !env.Force && cacheValid {
 		// 已有URL且上传时间晚于Log更新时间（最后录入时间），直接返回
 		env.Log.Infof(
 			"查询到之前上传的URL, 直接使用 Log:%s.%s 上传时间:%s 更新时间:%s URL:%s",

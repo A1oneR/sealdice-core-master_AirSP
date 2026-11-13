@@ -2,6 +2,7 @@ package main
 
 // _ "net/http/pprof"
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/gofrs/flock"
 	"github.com/jessevdk/go-flags"
 	"github.com/joho/godotenv"
@@ -25,6 +28,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"sealdice-core/api"
+	apiv2 "sealdice-core/api/v2"
 	"sealdice-core/dice"
 	"sealdice-core/dice/service"
 	"sealdice-core/logger"
@@ -95,6 +99,7 @@ func cleanupCreate(diceManager *dice.DiceManager) func() {
 
 		for _, i := range diceManager.Dice {
 			d := i
+			d.CloseDecks()
 			d.DBOperator.Close()
 		}
 
@@ -152,6 +157,7 @@ func fixTimezone() {
 
 func main() {
 	var opts struct {
+		GenOpenAPI             string `description:"导出 API v2 的 OpenAPI 规范" long:"gen-openapi"`
 		Version                bool   `description:"显示版本号"                                                           long:"version"`
 		Install                bool   `description:"安装为系统服务"                                                         long:"install"          short:"i"`
 		Uninstall              bool   `description:"删除系统服务"                                                          long:"uninstall"`
@@ -183,6 +189,13 @@ func main() {
 	// 防止输出
 	if opts.Version {
 		fmt.Fprintln(os.Stdout, dice.VERSION.String())
+		return
+	}
+	if opts.GenOpenAPI != "" {
+		if err := apiv2.WriteOpenAPI(opts.GenOpenAPI); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 	if opts.ShowEnv {
@@ -618,13 +631,17 @@ func uiServe(dm *dice.DiceManager, hideUI bool, useBuiltin bool) {
 	e.Use(logger.EchoLogMiddleware())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		Skipper:      middleware.DefaultSkipper,
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, "token"},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "token"},
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 	}))
 
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
+		Skipper: func(c echo.Context) bool {
+			return strings.HasPrefix(c.Request().URL.Path, "/sd-api/v2/realtime/") &&
+				strings.Contains(c.Request().Header.Get(echo.HeaderAccept), "text/event-stream")
+		},
 	}))
 	mimePatch()
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
@@ -651,11 +668,30 @@ func uiServe(dm *dice.DiceManager, hideUI bool, useBuiltin bool) {
 	if useBuiltin {
 		frontend, _ := fs.Sub(static.Frontend, "frontend")
 		e.StaticFS("/", frontend)
+		e.Use(legacyUIBackLinkMiddleware(frontend))
+		registerLegacyUI(e, frontend)
 	} else {
 		e.Static("/", "./frontend_overwrite")
+		frontend := os.DirFS("./frontend_overwrite")
+		e.Use(legacyUIBackLinkMiddleware(frontend))
+		registerLegacyUI(e, frontend)
 	}
 
+	registerRootDefaultUI(e)
 	api.Bind(e, dm)
+	v2API := humaecho.New(e, huma.DefaultConfig("Sealdice API", "2.0.0"))
+	realtime := apiv2.InitV2Router(v2API, dm)
+	realtime.Start(context.Background())
+	defer realtime.Close()
+	e.Server.RegisterOnShutdown(realtime.Close)
+	if err := apiv2.MountUploadGateway(e, dm); err != nil {
+		log.Warnf("挂载 API v2 上传网关失败: %v", err)
+	}
+	if assets, err := fs.Sub(static.V2UI, "v2ui"); err == nil {
+		if err := registerV2UI(e, assets); err != nil {
+			log.Warnf("加载新版 UI 失败: %v", err)
+		}
+	}
 	e.HideBanner = true // 关闭banner，原因是banner图案会改变终端光标位置
 
 	httpServe(e, dm, hideUI)

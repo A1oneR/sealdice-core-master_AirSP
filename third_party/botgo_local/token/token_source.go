@@ -5,18 +5,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"runtime/debug"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/sealdice/botgo/constant"
-	"github.com/sealdice/botgo/log"
+	"github.com/cenkalti/backoff/v4"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/sealdice/botgo/constant"
+	"github.com/sealdice/botgo/log"
 )
 
 const (
@@ -25,8 +30,13 @@ const (
 	// TypeQQBot ..
 	TypeQQBot string = "QQBot"
 
-	defaultExpiryDeltaMillSec  = 9000 // 与oauth2.defaultExpiryDelta - time.Second
-	randTimeUpperLimitMilliSec = 500  // 随机时间区间Sec
+	// defaultRefreshAhead 提前刷新时间。官方要求在上一个 token 接近过期 60 秒内
+	// 获取新 token，因此这里主动提前 60 秒刷新。
+	defaultRefreshAhead = 60 * time.Second
+	// tokenRequestTimeout token 接口请求超时。
+	tokenRequestTimeout = 10 * time.Second
+	// tokenResponseLimit 防止异常响应占用过多内存。
+	tokenResponseLimit = 1 << 20
 )
 
 type qqBotTokenReq struct {
@@ -92,6 +102,14 @@ type QQBotCredentials struct {
 	AppSecret string `yaml:"secret"`
 }
 
+// RefreshableTokenSource 支持主动失效和强制刷新的 token source。
+// 这是一个可选接口，不改变 oauth2.TokenSource 的兼容性。
+type RefreshableTokenSource interface {
+	oauth2.TokenSource
+	Invalidate()
+	ForceRefresh() (*oauth2.Token, error)
+}
+
 // QQBotTokenSource QQ机器人token source
 type QQBotTokenSource struct {
 	credentials *QQBotCredentials
@@ -107,24 +125,67 @@ func NewQQBotTokenSource(credentials *QQBotCredentials) oauth2.TokenSource {
 }
 
 // Token 获取access token
-func (w *QQBotTokenSource) Token() (*oauth2.Token, error) {
-	rawToken := w.cachedToken.Load()
-	if rawToken != nil && rawToken.(*oauth2.Token).Valid() {
-		token, ok := rawToken.(*oauth2.Token)
-		if ok && token.Valid() {
-			return token, nil
+func (w *QQBotTokenSource) Token() (token *oauth2.Token, err error) {
+	// 自定义实现/异常配置可能让底层代码 panic，这里统一转为 error。
+	defer func() {
+		if r := recover(); r != nil {
+			token = nil
+			err = fmt.Errorf("token source panic: %v\n%s", r, debug.Stack())
 		}
+	}()
+
+	if cached, ok := w.loadValidToken(); ok {
+		return cached, nil
 	}
-	// 获取新的access rawToken
-	newToken, err, shard := w.sg.Do("retrieve access rawToken", func() (interface{}, error) {
+
+	// 获取新的 access token
+	newToken, err, _ := w.sg.Do("retrieve access token", func() (interface{}, error) {
+		// singleflight 内二次检查，避免并发请求重复刷新
+		if cached, ok := w.loadValidToken(); ok {
+			return cached, nil
+		}
 		return w.getNewToken()
 	})
-	log.Debugf("shared flight:%v", shard)
 	if err != nil {
 		return nil, err
 	}
-	w.cachedToken.Store(newToken)
-	return newToken.(*oauth2.Token), nil
+	token, ok := newToken.(*oauth2.Token)
+	if !ok || token == nil {
+		return nil, errors.New("invalid token type")
+	}
+	w.cachedToken.Store(token)
+	return token, nil
+}
+
+// Invalidate 清空缓存，下一次 Token() 会重新请求。
+func (w *QQBotTokenSource) Invalidate() {
+	// 使用 typed nil，保证 atomic.Value 的 concrete type 一致。
+	w.cachedToken.Store((*oauth2.Token)(nil))
+}
+
+// ForceRefresh 强制刷新 token。
+func (w *QQBotTokenSource) ForceRefresh() (*oauth2.Token, error) {
+	w.Invalidate()
+	return w.Token()
+}
+
+func (w *QQBotTokenSource) loadValidToken() (*oauth2.Token, bool) {
+	raw := w.cachedToken.Load()
+	if raw == nil {
+		return nil, false
+	}
+	token, ok := raw.(*oauth2.Token)
+	if !ok || token == nil || !token.Valid() {
+		return nil, false
+	}
+	return token, true
+}
+
+func (w *QQBotTokenSource) appID() string {
+	if w == nil || w.credentials == nil {
+		return ""
+	}
+	return w.credentials.AppID
 }
 
 func (w *QQBotTokenSource) getNewToken() (*oauth2.Token, error) {
@@ -137,39 +198,55 @@ func (w *QQBotTokenSource) getNewToken() (*oauth2.Token, error) {
 		return nil, err
 	}
 	payload := bytes.NewReader(data)
-	log.Debugf("retrieve access token URL:%v req:%v", getTokenURL(), string(data))
-	req, err := http.NewRequest(http.MethodPost, getTokenURL(), payload)
+	log.Debugf("retrieve access token URL:%v", getTokenURL())
+
+	ctx, cancel := context.WithTimeout(context.Background(), tokenRequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, getTokenURL(), payload)
 	if err != nil {
-		log.Errorf("init http req failed:%v", err)
+		log.Errorf("[QQBot][token] 初始化 token 请求失败 app=%s: %v", w.appID(), err)
 		return nil, err
 	}
 	req.Header.Add("Content-Type", "application/json")
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: tokenRequestTimeout,
 	}
 	rsp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("retrieve token failed:%v", err)
+		log.Errorf("[QQBot][token] 请求 access_token 失败 app=%s: %v；请检查网络和 token 地址", w.appID(), err)
 		return nil, err
 	}
 	defer func() {
 		_ = rsp.Body.Close()
 	}()
 	rspTraceID := rsp.Header.Get(constant.HeaderTraceID)
-	body, err := io.ReadAll(rsp.Body)
+	body, err := io.ReadAll(io.LimitReader(rsp.Body, tokenResponseLimit))
 	if err != nil {
-		log.Errorf("read rsp failed:%v", err)
+		log.Errorf("[QQBot][token] 读取 token 响应失败 app=%s: %v", w.appID(), err)
 		return nil, err
 	}
-	log.Debugf("access token:%v traceID:%v", string(body), rspTraceID)
+	if rsp.StatusCode != http.StatusOK {
+		log.Errorf("[QQBot][token] token 接口返回异常状态 app=%s status=%d trace=%s", w.appID(), rsp.StatusCode, rspTraceID)
+		return nil, fmt.Errorf("retrieve token http status %d, traceID %s", rsp.StatusCode, rspTraceID)
+	}
+	log.Debugf("access token response received, size=%d traceID=%s", len(body), rspTraceID)
 	retrieveRsp := &qqBotTokenRsp{}
 	if err = json.Unmarshal(body, retrieveRsp); err != nil {
-		log.Errorf("unmarshal rsp failed:%v traceID:%v", err, rspTraceID)
+		log.Errorf("[QQBot][token] 解析 token 响应失败 app=%s trace=%s: %v", w.appID(), rspTraceID, err)
 		return nil, err
 	}
 	if retrieveRsp.Code != 0 {
-		log.Errorf("query acessToken err:%v.%v traceID:%v", retrieveRsp.Code, retrieveRsp.Message, rspTraceID)
-		return nil, fmt.Errorf("%v.%v", retrieveRsp.Code, retrieveRsp.Message)
+		log.Errorf("[QQBot][token] 获取 access_token 失败 app=%s code=%d trace=%s message=%s；请检查 AppID/AppSecret 和机器人状态",
+			w.appID(), retrieveRsp.Code, rspTraceID, retrieveRsp.Message)
+		return nil, fmt.Errorf("%v.%v, traceID: %s", retrieveRsp.Code, retrieveRsp.Message, rspTraceID)
+	}
+	if retrieveRsp.AccessToken == "" {
+		log.Errorf("[QQBot][token] token 响应缺少 access_token app=%s trace=%s", w.appID(), rspTraceID)
+		return nil, fmt.Errorf("empty access_token, traceID: %s", rspTraceID)
+	}
+	if retrieveRsp.ExpiresIn <= 0 {
+		log.Errorf("[QQBot][token] token 响应 expires_in 无效 app=%s value=%d trace=%s", w.appID(), retrieveRsp.ExpiresIn, rspTraceID)
+		return nil, fmt.Errorf("invalid expires_in: %d, traceID: %s", retrieveRsp.ExpiresIn, rspTraceID)
 	}
 	expiry := time.Now().Add(time.Duration(retrieveRsp.ExpiresIn) * time.Second)
 	return &oauth2.Token{
@@ -188,72 +265,145 @@ func (w *QQBotTokenSource) GetAppID() string {
 	return w.credentials.AppID
 }
 
+// RefreshErrorHandler token 刷新失败回调。
+type RefreshErrorHandler func(err error)
+
+var (
+	refreshErrMu        sync.RWMutex
+	refreshErrorHandler RefreshErrorHandler
+)
+
+// SetRefreshErrorHandler 设置 token 刷新失败回调。
+// 建议在 StartRefreshAccessToken 之前调用。
+func SetRefreshErrorHandler(h RefreshErrorHandler) {
+	refreshErrMu.Lock()
+	refreshErrorHandler = h
+	refreshErrMu.Unlock()
+}
+
+func currentRefreshErrorHandler() RefreshErrorHandler {
+	refreshErrMu.RLock()
+	defer refreshErrMu.RUnlock()
+	return refreshErrorHandler
+}
+
+func runRefreshErrorHandler(h RefreshErrorHandler, appID string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("[QQBot][token] RefreshErrorHandler panic app=%s: %v\n%s", appID, r, debug.Stack())
+		}
+	}()
+	h(err)
+}
+
 // StartRefreshAccessToken 启动获取AccessToken的后台刷新
-func StartRefreshAccessToken(ctx context.Context, tokenSource oauth2.TokenSource) error {
+func StartRefreshAccessToken(ctx context.Context, tokenSource oauth2.TokenSource) (err error) {
+	appID := ""
+	if source, ok := tokenSource.(interface{ GetAppID() string }); ok {
+		appID = source.GetAppID()
+	}
+	// 自定义 token source 的 Token() 也可能 panic，入口先兜底。
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("token source panic: %v\n%s", r, debug.Stack())
+			log.Errorf("[QQBot][token] 获取 token 时 panic app=%s: %v", appID, err)
+		}
+	}()
+
 	tk, err := tokenSource.Token()
 	if err != nil {
 		return err
 	}
-	log.Debugf("token:%+v ", tk)
 	go func() {
-		var consecutiveFailures int
-		for {
-			var refreshMilliSec int64
-			//上一轮获取token失败
-			if tk == nil {
-				if consecutiveFailures > 10 {
-					panic("get token failed continuously for more than ten times")
-				}
-				consecutiveFailures++
-				refreshMilliSec = 1000 // 1000ms后重试
-			} else {
-				consecutiveFailures = 0
-				refreshMilliSec = getRefreshMilliSec(tk.ExpiresIn)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("[QQBot][token] 刷新协程 panic app=%s: %v\n%s", appID, r, debug.Stack())
 			}
+		}()
+		for {
+			ttlSeconds := tk.ExpiresIn
+			if ttlSeconds <= 0 && !tk.Expiry.IsZero() {
+				ttlSeconds = int64(time.Until(tk.Expiry).Seconds())
+			}
+			refreshMilliSec := getRefreshMilliSec(ttlSeconds)
 			log.Debugf("refresh after %d milli sec", refreshMilliSec)
 			timer := time.NewTimer(time.Duration(refreshMilliSec) * time.Millisecond)
 			select {
 			case <-timer.C:
-				{
-					log.Debugf("start to refresh access token %s", time.Now().Format(time.StampMilli))
-					tk, err = tokenSource.Token()
-					if err != nil {
-						log.Errorf("refresh access token failed:%s", err)
-					}
-					timer.Stop()
-				}
+				timer.Stop()
 			case <-ctx.Done():
-				{
-					log.Warnf("recv ctx:%v exit refresh token", ctx.Err())
-					timer.Stop()
-					return
-				}
+				timer.Stop()
+				log.Warnf("[QQBot][token] 刷新协程退出 app=%s: %v", appID, ctx.Err())
+				return
 			}
+
+			b := backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(time.Second),
+				backoff.WithMultiplier(2),
+				backoff.WithMaxInterval(time.Minute),
+				backoff.WithRandomizationFactor(0.5),
+				backoff.WithMaxElapsedTime(0),
+			)
+			err := backoff.RetryNotify(func() error {
+				var refreshErr error
+				tk, refreshErr = forceRefreshToken(tokenSource)
+				return refreshErr
+			}, backoff.WithContext(b, ctx), func(err error, d time.Duration) {
+				if h := currentRefreshErrorHandler(); h != nil {
+					runRefreshErrorHandler(h, appID, err)
+				}
+				log.Errorf("[QQBot][token] 刷新 access_token 失败 app=%s: %v；%v 后重试", appID, err, d)
+			})
+			if err != nil {
+				// WithContext 在 ctx 取消时返回；其他情况 MaxElapsedTime 为 0，不会发生。
+				log.Warnf("[QQBot][token] 停止刷新 access_token app=%s: %v", appID, err)
+				return
+			}
+			if tk == nil {
+				log.Errorf("[QQBot][token] access_token 刷新后为空 app=%s", appID)
+				continue
+			}
+			log.Infof("[QQBot][token] access_token 已刷新 app=%s expires_in=%d", appID, tk.ExpiresIn)
 		}
 	}()
 	return nil
 }
 
-var (
-	r = rand.New(rand.NewSource(time.Now().Unix()))
-)
-
-// getRefreshSec 为token刷新保留提前量，避免因为网络延迟等原因导致token刷新不及时
+// getRefreshMilliSec 为token刷新保留提前量，避免因为网络延迟等原因导致token刷新不及时。
 func getRefreshMilliSec(tokenTTLSec int64) int64 {
-	refreshMilliSec := tokenTTLSec * 1000
-	if refreshMilliSec < defaultExpiryDeltaMillSec {
-		return refreshMilliSec
+	if tokenTTLSec <= 0 {
+		// 异常 TTL，避免紧凑循环
+		return int64(time.Second / time.Millisecond)
 	}
-	refreshMilliSec -= defaultExpiryDeltaMillSec
-	// 随机化，避免所有应用同时获取access_token
-	if refreshMilliSec > randTimeUpperLimitMilliSec {
-		rand := r.Int63n(randTimeUpperLimitMilliSec)
-		log.Debugf("rand:%d", rand)
-		refreshMilliSec -= rand
+	ttl := time.Duration(tokenTTLSec) * time.Second
+	if ttl <= defaultRefreshAhead {
+		return 0
 	}
-	return refreshMilliSec
+	d := ttl - defaultRefreshAhead
+	// 增加最多 5 秒的 jitter，避免所有应用同时刷新。
+	jitter := time.Duration(rand.Int63n(int64(5 * time.Second)))
+	if d > jitter {
+		d -= jitter
+	} else {
+		d = 0
+	}
+	return int64(d / time.Millisecond)
 }
 
+func forceRefreshToken(tokenSource oauth2.TokenSource) (*oauth2.Token, error) {
+	if refreshable, ok := tokenSource.(interface {
+		ForceRefresh() (*oauth2.Token, error)
+	}); ok {
+		return refreshable.ForceRefresh()
+	}
+	return tokenSource.Token()
+}
+
+var tokenURLOverride string
+
 func getTokenURL() string {
+	if tokenURLOverride != "" {
+		return tokenURLOverride
+	}
 	return fmt.Sprintf("%v%v", constant.TokenDomain, "/app/getAppAccessToken")
 }
